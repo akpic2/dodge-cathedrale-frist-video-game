@@ -1,4 +1,4 @@
-name: Build Windows native game
+name: Build Windows native game (SDL3 x64 + ARM64)
 on:
   push:
     branches: [native-cpp-sdl3]
