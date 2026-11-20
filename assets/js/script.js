@@ -68,6 +68,9 @@ let player,gargoyles=[],score=0,scoreTime=0,frames=0,spd=150,spawnInt=200,levelT
 // Timers en secondes : équilibrage de référence à 144 FPS, indépendant de l'écran.
 const REFERENCE_FPS=144,DIFFICULTY_STEP_SECONDS=200/REFERENCE_FPS;
 let difficultyProgressTimer=0,spawnTimer=0,bossShootTimer=0;
+// Simulation à pas fixe : le gameplay avance à 60 mises à jour/seconde,
+// même si le navigateur n'affiche que 30, 40 ou 144 images/seconde.
+const FIXED_STEP=1/60;let simulationAccumulator=0;
 let shieldActive=false,shieldTimer=0,shieldCooldown=0;
 let windForce=0,windChangeCooldown=0;
 let bossHP=0,bossMaxHP=15,bossX=W/2,bossY=80,bossVX=100,bossAnger=0;
@@ -106,7 +109,7 @@ function start(){
  windForce=0;windChangeCooldown=0;
  bossHP=bossMaxHP;bossX=W/2;bossY=80;bossVX=100;bossAnger=0;
  if(mode==='adventure'){spd=lvl().spd;spawnInt=lvl().spawnInt}else{spd=diff.spd;spawnInt=diff.spawnInt}
- difficultyProgressTimer=0;spawnTimer=0;bossShootTimer=0;paused=false;
+ difficultyProgressTimer=0;spawnTimer=0;bossShootTimer=0;simulationAccumulator=0;paused=false;
  cv.parentElement.style.background=mode==='adventure'?BG[level]:GAME_BACKGROUND;
  $('#game-mode-label').textContent=mode==='classic'?'MODE CLASSIQUE — '+diff.name:'MODE AVENTURE — ÉTAPE '+(level+1)+'/05';
  $('#game-level-title').textContent=mode==='classic'?'La Cathédrale':lvl().name;
@@ -250,10 +253,20 @@ function drawBoss(){
 // ===== BOUCLE PRINCIPALE =====
 function loop(timestamp){
  if(screen!=='game'||paused)return;
- // Ne pas brider le temps simulé à 100 ms : sur une machine qui rend moins de 10 FPS,
- // ce plafond ralentissait aussi le jeu et rendait les obstacles moins fréquents.
- // 250 ms absorbe les baisses de cadence sans rattraper brutalement une longue pause.
- const dt=Math.min(Math.max((timestamp-lastTime)/1000,0),0.25);lastTime=timestamp;
+ // Accumule le temps réel puis exécute autant de pas physiques fixes que nécessaire.
+ // Le rythme du gameplay ne dépend donc plus du nombre de frames rendues par le PC.
+ const elapsed=Math.min(Math.max((timestamp-lastTime)/1000,0),1);
+ lastTime=timestamp;simulationAccumulator+=elapsed;
+ let steps=0;
+ while(simulationAccumulator>=FIXED_STEP&&steps<60&&screen==='game'&&!paused){
+  gameStep(FIXED_STEP);
+  simulationAccumulator-=FIXED_STEP;steps++;
+ }
+ requestAnimationFrame(loop);
+}
+
+function gameStep(dt){
+ if(screen!=='game'||paused)return;
  ctx.setTransform(SCALE,0,0,SCALE,0,0);ctx.imageSmoothingEnabled=false;
  ctx.clearRect(0,0,W,H);
  drawBackground();
@@ -372,7 +385,6 @@ function loop(timestamp){
  ctx.fillStyle=dark?'rgba(255,255,255,.6)':'rgba(0,0,0,.45)';ctx.font='400 9px '+FONT;ctx.textAlign='center';
  ctx.fillText(ch.name.toUpperCase(),player.x,player.y-5);
 
- requestAnimationFrame(loop);
 }
 
 // ===== ÉVÉNEMENTS =====
