@@ -64,7 +64,10 @@ const persist=()=>{localStorage.setItem('coins',coins);localStorage.setItem('unl
 
 // ===== ÉTAT =====
 let selected=0,acc='none',tab='char',difficulty=1,mode='classic',level=0,screen='home';
-let player,gargoyles=[],score=0,scoreTime=0,frames=0,spd=150,spawnInt=200,lastSpawn=0,levelTimer=0,lastTime=0,paused=false,keys={};
+let player,gargoyles=[],score=0,scoreTime=0,frames=0,spd=150,spawnInt=200,levelTimer=0,lastTime=0,paused=false,keys={};
+// Timers en secondes : équilibrage de référence à 144 FPS, indépendant de l'écran.
+const REFERENCE_FPS=144,DIFFICULTY_STEP_SECONDS=200/REFERENCE_FPS;
+let difficultyProgressTimer=0,spawnTimer=0,bossShootTimer=0;
 let shieldActive=false,shieldTimer=0,shieldCooldown=0;
 let windForce=0,windChangeCooldown=0;
 let bossHP=0,bossMaxHP=15,bossX=W/2,bossY=80,bossVX=100,bossAnger=0;
@@ -103,7 +106,7 @@ function start(){
  windForce=0;windChangeCooldown=0;
  bossHP=bossMaxHP;bossX=W/2;bossY=80;bossVX=100;bossAnger=0;
  if(mode==='adventure'){spd=lvl().spd;spawnInt=lvl().spawnInt}else{spd=diff.spd;spawnInt=diff.spawnInt}
- lastSpawn=0;paused=false;
+ difficultyProgressTimer=0;spawnTimer=0;bossShootTimer=0;paused=false;
  cv.parentElement.style.background=mode==='adventure'?BG[level]:GAME_BACKGROUND;
  $('#game-mode-label').textContent=mode==='classic'?'MODE CLASSIQUE — '+diff.name:'MODE AVENTURE — ÉTAPE '+(level+1)+'/05';
  $('#game-level-title').textContent=mode==='classic'?'La Cathédrale':lvl().name;
@@ -223,7 +226,10 @@ function updateBoss(dt){
  bossX+=bossVX*dt;
  if(bossX<50||bossX>W-50){bossVX*=-1;bossAnger=Math.min(1,bossAnger+0.04)}
  bossY=70+Math.sin(Date.now()/600)*20;
- if(frames%Math.max(55,110-Math.floor(bossAnger*40))===0){
+ const shotInterval=Math.max(55,110-Math.floor(bossAnger*40))/REFERENCE_FPS;
+ bossShootTimer+=dt;
+ if(bossShootTimer>=shotInterval){
+  bossShootTimer-=shotInterval;
   const angle=Math.atan2(player.y-bossY,player.x-bossX),v=170+bossAnger*100;
   const bfType=Math.random()<0.5?'bouleFeu':'bouleFeu2',bfSize=bfType==='bouleFeu2'?40:31;
   gargoyles.push({x:bossX,y:bossY,w:bfSize,h:bfSize,vx:Math.cos(angle)*v,vy:Math.sin(angle)*v,rot:0,type:bfType,fromRight:false,isBossProj:true});
@@ -284,8 +290,17 @@ function loop(timestamp){
 
   if(levelTimer>=lv.duration){finish(true);return}
 
-  if(frames%200===0){spd+=12;spawnInt=Math.max(50,spawnInt-5)}
-  if(frames-lastSpawn>=spawnInt){spawnGargoyle();lastSpawn=frames}
+  // Progression et apparitions calées sur le temps, équilibrage historique à 144 FPS.
+  difficultyProgressTimer+=dt;
+  while(difficultyProgressTimer>=DIFFICULTY_STEP_SECONDS){
+   difficultyProgressTimer-=DIFFICULTY_STEP_SECONDS;
+   spd+=12;spawnInt=Math.max(50,spawnInt-5);
+  }
+  spawnTimer+=dt;
+  let spawnIntervalSeconds=spawnInt/REFERENCE_FPS;
+  while(spawnTimer>=spawnIntervalSeconds){
+   spawnGargoyle();spawnTimer-=spawnIntervalSeconds;
+  }
   frames++;
 
   gargoyles.forEach(g=>{
@@ -320,8 +335,17 @@ function loop(timestamp){
   if(dead){finish(false);return}
  }else{
   // Mode classique
-  if(frames%200===0){spd+=25;spawnInt=Math.max(25,spawnInt-8)}
-  if(frames-lastSpawn>=spawnInt){spawnGargoyle();lastSpawn=frames}
+  // Même difficulté réelle sur tous les écrans, indépendamment des FPS.
+  difficultyProgressTimer+=dt;
+  while(difficultyProgressTimer>=DIFFICULTY_STEP_SECONDS){
+   difficultyProgressTimer-=DIFFICULTY_STEP_SECONDS;
+   spd+=25;spawnInt=Math.max(25,spawnInt-8);
+  }
+  spawnTimer+=dt;
+  let spawnIntervalSeconds=spawnInt/REFERENCE_FPS;
+  while(spawnTimer>=spawnIntervalSeconds){
+   spawnGargoyle();spawnTimer-=spawnIntervalSeconds;
+  }
   frames++;
   gargoyles.forEach(g=>{if(g.fromRight)g.x+=g.vx*dt;else g.y+=g.vy*dt;g.rot+=2.4*dt});
   gargoyles=gargoyles.filter(g=>g.fromRight?(g.x>-40&&g.x<W+40):(g.y<H+40));
