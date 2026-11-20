@@ -250,7 +250,10 @@ function drawBoss(){
 // ===== BOUCLE PRINCIPALE =====
 function loop(timestamp){
  if(screen!=='game'||paused)return;
- const dt=Math.min((timestamp-lastTime)/1000,0.1);lastTime=timestamp;
+ // Ne pas brider le temps simulé à 100 ms : sur une machine qui rend moins de 10 FPS,
+ // ce plafond ralentissait aussi le jeu et rendait les obstacles moins fréquents.
+ // 250 ms absorbe les baisses de cadence sans rattraper brutalement une longue pause.
+ const dt=Math.min(Math.max((timestamp-lastTime)/1000,0),0.25);lastTime=timestamp;
  ctx.setTransform(SCALE,0,0,SCALE,0,0);ctx.imageSmoothingEnabled=false;
  ctx.clearRect(0,0,W,H);
  drawBackground();
