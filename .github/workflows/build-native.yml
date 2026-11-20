@@ -1,4 +1,4 @@
-name: Build Windows native game (SDL3 x64 + ARM64) - compile fix
+name: Build Windows native game (SDL3 x64 + ARM64) - packaging fix
 on:
   push:
     branches: [native-cpp-sdl3]
@@ -34,7 +34,7 @@ jobs:
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item native/build/Release/DodgeCathedrale.exe dist/
           Copy-Item -Recurse native/build/Release/assets dist/assets
-          Get-ChildItem "$env:VCPKG_ROOT/installed/${{ matrix.triplet }}/bin/*.dll" | Copy-Item -Destination dist/
+          Get-ChildItem "native/build/Release/*.dll" | Copy-Item -Destination dist/
           Compress-Archive -Path dist/* -DestinationPath DodgeCathedrale-Windows-${{ matrix.triplet }}.zip -Force
       - uses: actions/upload-artifact@v4
         with:
