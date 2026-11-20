@@ -30,7 +30,7 @@ unlocked.add('HommeBleu');unlocked.add('FemmeBleu');
 let selected=0,acc='none',tab='char',difficulty=1,mode='classic',level=0,screen='home';
 let score=0,elapsed=0,last=0,spawnClock=0,speed=150,spawnRate=200,live=[],player={x:W/2,y:H-85,vy:0},keys={},paused=false,shield=0,shieldCd=0,wind=0,windCd=0,boss={x:W/2,y:75,vx:115,fire:0};
 const persist=()=>{localStorage.setItem('coins',coins);localStorage.setItem('unlocked',JSON.stringify([...unlocked]))};
-const current=()=>chars[selected], chosenImage=c=>image((acc!=='none'&&c.acc[acc])||c.base);
+const current=()=>chars[selected];const charImageCache=new Map();function chosenImage(c){const src=(acc!=='none'&&c.acc[acc])||c.base;if(!charImageCache.has(src))charImageCache.set(src,image(src));return charImageCache.get(src)}
 const pad=n=>String(Math.max(0,Math.floor(n))).padStart(3,'0');
 function stats(){$('#header-coins').textContent=pad(coins);$('#header-best').textContent=pad(best);$('#inspector-best').textContent=pad(best);$('#inspector-coins').textContent=pad(coins);$('#inspector-character').textContent=current().name.toUpperCase();$('#shop-coins').textContent=pad(coins)}
 function screenTo(name,index,kicker){screen=name;$$('.screen').forEach(x=>x.classList.toggle('active',x.id==='screen-'+name));$$('.rail-link').forEach(x=>x.classList.toggle('active',x.dataset.action===(name==='game'||name==='result'?'home':name)));$('#view-index').textContent=index;$('#view-kicker').textContent=kicker;stats()}
