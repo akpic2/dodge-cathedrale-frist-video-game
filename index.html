@@ -1,33 +1,164 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dodge la Cathédrale</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#ffffff">
+  <title>Dodge la Cathédrale — Jeu d'arcade</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="wordmark" href="#" data-action="home">DLC<span> / </span>01</a>
+      <div class="topbar-center">ARCHIVE DE JEU <span>—</span> CHARTRES, FRANCE</div>
+      <div class="topbar-meta"><span id="header-coins">000</span> PIÈCES <i></i> <span id="header-best">000</span> RECORD</div>
+    </header>
 
-<div id="gw">
-  <div id="ub">
-    <div class="ub-block">
-      <div class="ub-label">Score</div>
-      <div id="sv">0</div>
+    <div class="workspace">
+      <nav class="rail" aria-label="Navigation principale">
+        <button class="rail-link active" data-action="home"><span>01</span> JOUER</button>
+        <button class="rail-link" data-action="select"><span>02</span> PERSONNAGE</button>
+        <button class="rail-link" data-action="shop"><span>03</span> BOUTIQUE</button>
+        <div class="rail-bottom">DODGE<br>LA CATHÉDRALE</div>
+      </nav>
+
+      <main class="main-view">
+        <div class="view-heading">
+          <div class="eyebrow" id="view-kicker">(01) — EXPÉRIENCE ARCADE</div>
+          <div class="view-index" id="view-index">01 / 04</div>
+        </div>
+
+        <section class="screen active" id="screen-home">
+          <div class="intro">
+            <p class="intro-label">UN JEU DE SURVIE — DEPUIS CHARTRES</p>
+            <h1>Dodge la<br><em>Cathédrale.</em></h1>
+            <p class="intro-copy">Évitez les obstacles. Tenez le plus longtemps possible. Et surtout, ne vous faites pas écraser.</p>
+          </div>
+          <div class="home-grid">
+            <button class="mode-card" data-mode="classic">
+              <span class="card-number">01 / MODE</span>
+              <span class="card-title">Classique</span>
+              <span class="card-desc">Une partie sans fin. La difficulté augmente avec le temps.</span>
+              <span class="card-arrow">↗</span>
+            </button>
+            <button class="mode-card" data-mode="adventure">
+              <span class="card-number">02 / PARCOURS</span>
+              <span class="card-title">Aventure</span>
+              <span class="card-desc">Cinq niveaux, cinq mécaniques, un dernier adversaire.</span>
+              <span class="card-arrow">↗</span>
+            </button>
+          </div>
+          <div class="home-footer">
+            <div><span class="small-label">DIFFICULTÉ CLASSIQUE</span><button class="text-control" id="difficulty-button">NORMAL <span>↻</span></button></div>
+            <div class="home-hint">FLÈCHES ← → POUR BOUGER <span>·</span> ↑ POUR SAUTER</div>
+          </div>
+        </section>
+
+        <section class="screen" id="screen-select">
+          <div class="section-intro">
+            <h2>Choisir<br><em>son personnage.</em></h2>
+            <p>Chaque personnage possède sa propre vitesse. Les personnages verrouillés sont disponibles dans la boutique.</p>
+          </div>
+          <div class="character-layout">
+            <div class="character-list" id="character-list"></div>
+            <div class="character-preview">
+              <div class="preview-label">SÉLECTION ACTIVE</div>
+              <div class="preview-image"><img id="character-preview" alt="Personnage sélectionné"></div>
+              <div class="preview-name" id="character-name">Homme Bleu</div>
+              <div class="preview-stat"><span>VITESSE</span><strong id="character-speed">280</strong></div>
+              <div class="preview-stat"><span>ACCESSOIRE</span><strong id="character-accessory">AUCUN</strong></div>
+              <div class="accessory-row" id="accessory-list"></div>
+              <button class="button-primary" id="launch-button">LANCER LA PARTIE <span>↗</span></button>
+            </div>
+          </div>
+          <div class="section-foot"><button class="text-control" data-action="home">← RETOUR</button><span>ENTRÉE POUR CONFIRMER</span></div>
+        </section>
+
+        <section class="screen" id="screen-shop">
+          <div class="section-intro shop-intro">
+            <h2>La<br><em>boutique.</em></h2>
+            <p>Débloquez de nouveaux personnages et accessoires avec les pièces gagnées en aventure.</p>
+            <div class="shop-wallet"><span>PORTE-MONNAIE</span><strong id="shop-coins">000</strong> PIÈCES</div>
+          </div>
+          <div class="shop-tabs">
+            <button class="shop-tab active" data-shop-tab="char">PERSONNAGES <span>08</span></button>
+            <button class="shop-tab" data-shop-tab="acc">ACCESSOIRES <span>03</span></button>
+          </div>
+          <div class="shop-list" id="shop-list"></div>
+          <div class="section-foot"><button class="text-control" data-action="home">← RETOUR</button><span>CLIC POUR ACHETER OU ÉQUIPER</span></div>
+        </section>
+
+        <section class="screen game-screen" id="screen-game">
+          <div class="game-heading">
+            <div><span class="small-label" id="game-mode-label">MODE CLASSIQUE</span><h2 id="game-level-title">La Cathédrale</h2></div>
+            <div class="game-score"><span>SCORE</span><strong id="game-score">000</strong></div>
+          </div>
+          <div class="game-stage">
+            <canvas id="game-canvas" width="720" height="560" aria-label="Zone de jeu"></canvas>
+            <div class="game-overlay" id="game-overlay" hidden>
+              <span class="small-label" id="overlay-kicker">PAUSE</span>
+              <h2 id="overlay-title">En pause.</h2>
+              <p id="overlay-copy">La partie est suspendue.</p>
+              <button class="button-primary" id="overlay-action">REPRENDRE <span>↗</span></button>
+            </div>
+          </div>
+          <div class="game-bottom"><span id="game-status">EN COURS</span><span id="game-timer">00:00</span><button class="text-control" id="pause-button">PAUSE [P]</button></div>
+        </section>
+
+        <section class="screen" id="screen-result">
+          <div class="result-content">
+            <div class="eyebrow" id="result-kicker">(04) — FIN DE PARTIE</div>
+            <h2 id="result-title">Écrasé.</h2>
+            <p id="result-copy">La cathédrale a eu le dernier mot.</p>
+            <div class="result-stats">
+              <div><span>SCORE</span><strong id="result-score">000</strong></div>
+              <div><span>RECORD</span><strong id="result-best">000</strong></div>
+              <div><span>PIÈCES</span><strong id="result-coins">000</strong></div>
+            </div>
+            <div class="result-actions">
+              <button class="button-primary" id="result-primary">REJOUER <span>↗</span></button>
+              <button class="text-control" data-action="home">RETOUR AU MENU</button>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <aside class="inspector">
+        <div class="inspector-block">
+          <div class="eyebrow">(01) — FICHE DU JEU</div>
+          <div class="inspector-title">Dodge la<br><em>Cathédrale</em></div>
+          <p>Un jeu d'arcade indépendant inspiré des lieux et symboles de Chartres.</p>
+        </div>
+        <div class="inspector-block inspector-data">
+          <div class="eyebrow">(02) — DONNÉES</div>
+          <div class="data-row"><span>MEILLEUR SCORE</span><strong id="inspector-best">000</strong></div>
+          <div class="data-row"><span>PIÈCES</span><strong id="inspector-coins">000</strong></div>
+          <div class="data-row"><span>PERSONNAGE</span><strong id="inspector-character">HOMME BLEU</strong></div>
+        </div>
+        <div class="inspector-block inspector-controls">
+          <div class="eyebrow">(03) — COMMANDES</div>
+          <div class="control-row"><span>DÉPLACEMENT</span><kbd>←</kbd><kbd>→</kbd></div>
+          <div class="control-row"><span>SAUTER</span><kbd>↑</kbd></div>
+          <div class="control-row"><span>BOUCLIER</span><kbd>ESPACE</kbd></div>
+          <div class="control-row"><span>PAUSE</span><kbd>P</kbd></div>
+        </div>
+        <div class="inspector-bottom">
+          <span>VERSION 02.0</span>
+          <span>© MATHURIN MOLLIER</span>
+        </div>
+      </aside>
     </div>
-    <div class="ub-title">Dodge<br>la Cathédrale</div>
-    <div class="ub-block ub-right">
-      <div class="ub-label">Meilleur</div>
-      <div id="bv">0</div>
-      <button id="difficultyBtn">Diff: Normal</button>
-    </div>
+
+    <footer class="statusbar">
+      <span><i></i> SYSTÈME OPÉRATIONNEL</span>
+      <span>CHARTRES — FRANCE</span>
+      <span>UN JEU INDÉPENDANT <b>↗</b></span>
+    </footer>
   </div>
-  <canvas id="canvas" width="480" height="420"></canvas>
-</div>
-
-<script src="assets/js/script.js"></script>
-
+  <script src="assets/js/script.js"></script>
 </body>
 </html>
