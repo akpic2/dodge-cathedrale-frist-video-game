@@ -1,0 +1,8 @@
+{
+  "name": "dodge-cathedrale-native",
+  "version-string": "1.0.0",
+  "dependencies": [
+    { "name": "sdl3", "default-features": false },
+    { "name": "sdl3-image", "default-features": false, "features": ["png"] }
+  ]
+}
