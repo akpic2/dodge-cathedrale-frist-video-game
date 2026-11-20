@@ -92,6 +92,8 @@ let state='mode';let gameMode='classic';
 const DIFFICULTIES=[{id:'easy',label:'Facile',spd:100,spawnInt:300},{id:'normal',label:'Normal',spd:150,spawnInt:200},{id:'hard',label:'Difficile',spd:220,spawnInt:120}];
 let difficultyIdx=1;let charIdx=0,colorIdx=0,accIdx=0;let customName='';
 let player,gargoyles,score,best=0,scoreTime=0,frames,spd,spawnInt,lastSpawn,levelTimer=0;
+// Difficulté synchronisée sur le temps réel (référence : 144 FPS).
+let difficultyProgressTimer=0,spawnTimer=0,bossShootTimer=0;
 let mouseX=W/2,mouseY=0;let keys={};let nameInput=false;let hoverChar=-1,hoverColor=-1,hoverAcc=-1;
 let shopScrollY=0;let hoverShopItem=-1;let shopFeedback=null;
 let coins=parseInt(localStorage.getItem('coins')||'0');let currentLevel=1;let coinPopups=[];
@@ -126,6 +128,7 @@ function initGame(){
   const diff=getDifficulty();
   player={x:W/2,y:H-30,w:32,h:45,vy:0,isJumping:false};
   gargoyles=[];score=0;scoreTime=0;frames=0;levelTimer=0;coinPopups=[];
+  difficultyProgressTimer=0;spawnTimer=0;bossShootTimer=0;
   shieldActive=false;shieldTimer=0;shieldCooldown=0;
   windForce=0;windChangeCooldown=0;
   bossHP=bossMaxHP;bossX=W/2;bossY=80;bossVX=100;bossAnger=0;
@@ -574,7 +577,10 @@ function updateBoss(dt){
   bossX+=bossVX*dt;
   if(bossX<50||bossX>W-50){bossVX*=-1;bossAnger=Math.min(1,bossAnger+0.04);}
   bossY=70+Math.sin(Date.now()/600)*20;
-  if(frames%Math.max(55,110-Math.floor(bossAnger*40))===0){
+  bossShootTimer+=dt;
+  const shotInterval=Math.max(55,110-Math.floor(bossAnger*40))/144;
+  if(bossShootTimer>=shotInterval){
+    bossShootTimer-=shotInterval;
     const angle=Math.atan2(player.y-bossY,player.x-bossX);
     const v=170+bossAnger*100;
     const bfType=Math.random()<0.5?'bouleFeu':'bouleFeu2';
@@ -686,8 +692,14 @@ function loop(timestamp){
 
     if(levelTimer>=lv.duration){coins+=100;saveCoins();state='win';addCoinPopup(W/2,H/2-30,100);requestAnimationFrame(loop);return;}
 
-    if(frames%200===0){spd+=12;spawnInt=Math.max(50,spawnInt-5);}
-    if(frames-lastSpawn>=spawnInt){spawnGargoyle();lastSpawn=frames;}
+    difficultyProgressTimer+=dt;
+    const progressionInterval=200/144;
+    while(difficultyProgressTimer>=progressionInterval){
+      difficultyProgressTimer-=progressionInterval;
+      spd+=12;spawnInt=Math.max(50,spawnInt-5);
+    }
+    spawnTimer+=dt;
+    if(spawnTimer>=spawnInt/144){spawnGargoyle();spawnTimer-=spawnInt/144;}
     frames++;
 
     gargoyles.forEach(g=>{
@@ -722,8 +734,15 @@ function loop(timestamp){
 
   }else{
     // Mode classique
-    if(frames%200===0){spd+=25;spawnInt=Math.max(25,spawnInt-8);}
-    if(frames-lastSpawn>=spawnInt){spawnGargoyle();lastSpawn=frames;}
+    // Même rythme de difficulté sur tous les écrans, calé sur 144 FPS.
+    difficultyProgressTimer+=dt;
+    const progressionInterval=200/144;
+    while(difficultyProgressTimer>=progressionInterval){
+      difficultyProgressTimer-=progressionInterval;
+      spd+=25;spawnInt=Math.max(25,spawnInt-8);
+    }
+    spawnTimer+=dt;
+    if(spawnTimer>=spawnInt/144){spawnGargoyle();spawnTimer-=spawnInt/144;}
     frames++;
     gargoyles.forEach(g=>{
       if(g.fromRight){g.x+=g.vx*dt;}else{g.y+=g.vy*dt;}
