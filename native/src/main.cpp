@@ -146,22 +146,35 @@ void update(double dt){
  }),obstacles.end());
  for(const auto& g:obstacles)if(collision(g)){screen=Screen::GameOver;best=std::max(best,score);break;}
 }
+void label(float x,float y,const std::string& value){
+ SDL_SetRenderDrawColor(renderer,20,20,20,255);
+ SDL_RenderDebugText(renderer,x,y,value.c_str());
+}
 void draw(){
  drawBackground();
  for(const auto& g:obstacles)drawTexture(texture(obstacleKey(g.type)),g.x,g.y,g.w,g.h,g.rotation*57.2958);
  drawTexture(texture((std::string("player")+std::to_string(characterIndex)).c_str()),player.x,player.y+player.h/2,52,52);
- number(score,18,18,2); number(best,420,18,2);
- // HUD de difficulté : trois marqueurs pleins = difficile.
- for(int i=0;i<3;++i)rect(18+i*12,38,8,4,INK);
+ label(18,10,"SCORE"); number(score,18,24,2);
+ label(395,10,"RECORD"); number(best,400,24,2);
+ label(18,48,"DIFFICILE");
  if(screen==Screen::Menu){
-  rect(55,95,370,2,INK); rect(55,300,370,2,INK);
-  // Titre et bouton stylisés, avec les commandes dans la barre de titre Windows.
-  centeredTextMark(110,145,260,8); centeredTextMark(145,165,190,5);
-  centeredTextMark(155,225,170,3);
+  label(112,92,"DODGE LA CATHEDRALE");
+  label(112,116,"EDITION WINDOWS NATIVE");
+  label(112,158,"MODE CLASSIQUE - DIFFICILE");
+  label(112,184,"ENTREE : COMMENCER");
+  label(112,208,"1-8 : CHOISIR UN PERSONNAGE");
+  label(112,232,std::string("PERSONNAGE : ")+CHARACTERS[characterIndex].name);
+  drawTexture(texture((std::string("player")+std::to_string(characterIndex)).c_str()),240,300,64,64);
+  label(112,365,"FLECHES : BOUGER / SAUTER");
+  label(112,382,"P : PAUSE    ECHAP : QUITTER");
  }else if(screen==Screen::Paused||screen==Screen::GameOver){
-  rect(0,0,LOGICAL_W,LOGICAL_H,{243,243,243,215});
-  centeredTextMark(145,165,190,8); centeredTextMark(175,190,130,4);
-  if(screen==Screen::GameOver)number(score,215,225,4);
+  rect(0,0,LOGICAL_W,LOGICAL_H,{243,243,243,235});
+  label(176,160,screen==Screen::Paused?"PAUSE":"GAME OVER");
+  if(screen==Screen::GameOver){label(185,188,"SCORE");number(score,215,208,3);}
+  label(125,255,"ENTREE : REPRENDRE / REJOUER");
+  label(125,275,"ECHAP : QUITTER");
+ }else{
+  label(18,66,"SURVIE - DIFFICULTE MAXIMALE");
  }
 }
 void loadAssets(){
