@@ -178,7 +178,7 @@ void draw(){
  }
 }
 void loadAssets(){
- char* p=SDL_GetBasePath(); if(p){basePath=p;SDL_free(p);}
+ const char* p=SDL_GetBasePath(); if(p){basePath=p;}
  for(auto& s:sprites){const std::string path=basePath+s.path;s.texture=IMG_LoadTexture(renderer,path.c_str());}
 }
 void events(){
@@ -196,7 +196,7 @@ void events(){
      if(screen==Screen::Menu||screen==Screen::GameOver)resetGame();
      else if(screen==Screen::Paused)screen=Screen::Playing;
      break;
-    case SDLK_p: if(screen==Screen::Playing)screen=Screen::Paused;else if(screen==Screen::Paused)screen=Screen::Playing;break;
+    case SDLK_P: if(screen==Screen::Playing)screen=Screen::Paused;else if(screen==Screen::Paused)screen=Screen::Playing;break;
     case SDLK_LEFT: left=true;break; case SDLK_RIGHT:right=true;break; case SDLK_UP:jumpPressed=true;break;
     case SDLK_1:characterIndex=0;break;case SDLK_2:characterIndex=1;break;case SDLK_3:characterIndex=2;break;
     case SDLK_4:characterIndex=3;break;case SDLK_5:characterIndex=4;break;case SDLK_6:characterIndex=5;break;
@@ -216,7 +216,7 @@ int main(int argc,char** argv){
  renderer=SDL_CreateRenderer(window,nullptr);
  if(!renderer){std::fprintf(stderr,"SDL_CreateRenderer: %s\n",SDL_GetError());SDL_DestroyWindow(window);SDL_Quit();return 1;}
  SDL_SetRenderLogicalPresentation(renderer,LOGICAL_W,LOGICAL_H,SDL_LOGICAL_PRESENTATION_LETTERBOX);
- IMG_Init(IMG_INIT_PNG);loadAssets();
+ loadAssets();
  SDL_SetWindowTitle(window,"DODGE LA CATHEDRALE | DIFFICILE | Entree: jouer | Fleches: bouger/sauter | P: pause");
  Uint64 previous=SDL_GetPerformanceCounter();const double frequency=static_cast<double>(SDL_GetPerformanceFrequency());
  while(running){
@@ -228,5 +228,5 @@ int main(int argc,char** argv){
   SDL_Delay(1);
  }
  for(auto& s:sprites)if(s.texture)SDL_DestroyTexture(s.texture);
- IMG_Quit();SDL_DestroyRenderer(renderer);SDL_DestroyWindow(window);SDL_Quit();return 0;
+ SDL_DestroyRenderer(renderer);SDL_DestroyWindow(window);SDL_Quit();return 0;
 }
