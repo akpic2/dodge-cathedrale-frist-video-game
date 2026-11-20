@@ -4,7 +4,7 @@ const cv=$('#game-canvas'),ctx=cv.getContext('2d'),W=720,H=560;
 const image=s=>{const i=new Image();i.src=s;return i};
 const bg=[image('assets/img/caté.png'),image('assets/img/cinéma.png'),image('assets/img/théatre.png'),image('assets/img/porteguillaume.png'),image('assets/img/lvl4.png')];
 const dragon=image('assets/img/Dragon.png');
-const obs=Object.fromEntries(['Vitrail','Cloches','masqueJoyeux','masqueTriste','popCorn','Clap','Brique','Gargouille','BouleFeu_petite','BouleFeu2'].map((n,i)=>[[ 'vitrail','cloche','masqueJoyeux','masqueTriste','popCorn','clap','brique','gargouille','bouleFeu','bouleFeu2'][i],image('assets/img/Obstacles/'+n+'.png')]));
+const obs=Object.fromEntries(['Vitrail','Cloches','masqueJoyeux','masqueTriste','popCorn','Clap','Brique','Gargouille','BouleFeu_petite','BouleFeu2'].map((n,i)=>[ [ 'vitrail','cloche','masqueJoyeux','masqueTriste','popCorn','clap','brique','gargouille','bouleFeu','bouleFeu2'][i],image('assets/img/Obstacles/'+n+'.png')]));
 const chars=[
 {id:'HommeBleu',name:'Homme Bleu',speed:280,cost:0,base:'assets/img/perso 3/Homme/Homme_Bleu.png',acc:{lunettes:'assets/img/perso 3/Homme/Homme_Bleu_Sunglass.png',aureole:'assets/img/perso 3/Homme/Homme_Bleu_Aureole.png',biere:'assets/img/perso 3/Homme/Homme_Bleu_Biere.png'}},
 {id:'FemmeBleu',name:'Femme Bleu',speed:280,cost:0,base:'assets/img/perso 3/Femme/Femme_Bleu.png',acc:{lunettes:'assets/img/perso 3/Femme/Femme_Bleu_Sunglass.png',aureole:'assets/img/perso 3/Femme/Femme_Bleu_Aureole.png',biere:'assets/img/perso 3/Femme/Femme_Bleu_Biere.png'}},
@@ -73,11 +73,11 @@ function loop(now){
  if(screen!=='game'||paused)return;let dt=Math.min((now-last)/1000,.04);last=now;elapsed+=dt;score=Math.floor(elapsed*20);$('#game-score').textContent=pad(score);$('#game-timer').textContent='00:'+String(Math.floor(elapsed)).padStart(2,'0');
  let lv=levels[level],mechanic=mode==='adventure'?lv.mechanic:'classic';cover(mode==='adventure'?bg[lv.bg]:bg[0]);ctx.fillStyle='rgba(255,255,255,.14)';ctx.fillRect(0,0,W,H);
  if(mechanic==='wind'){windCd-=dt;if(windCd<=0){wind=(Math.random()<.5?-1:1)*(85+Math.random()*110);windCd=2.5+Math.random()*3}player.x+=wind*dt;ctx.fillStyle='#000';ctx.font='16px sans-serif';ctx.fillText(wind>0?'→ → →':'← ← ←',W/2-35,55)}
- if(mechanic==='shield'){if(shield>0)shield-=dt;if(shieldCd>0)shieldCd-=dt;if(keys.Space&&shieldCd<=0&&shield<=0){shield=3;shieldCd=8}ctx.fillStyle='#000';ctx.font='12px sans-serif';ctx.fillText(shield>0?'BOUCLIER '+shield.toFixed(1)+'S':shieldCd>0?'RECHARGE '+shieldCd.toFixed(1)+'S':'ESPACE — BOUCLIER PRÊT',20,25)}
+ if(mechanic==='shield'){if(shield>0)shield=Math.max(0,shield-dt);if(shieldCd>0)shieldCd-=dt;if(keys.Space&&shieldCd<=0&&shield<=0){shield=3;shieldCd=8}ctx.fillStyle='#000';ctx.font='12px sans-serif';ctx.fillText(shield>0?'BOUCLIER '+shield.toFixed(1)+'S':shieldCd>0?'RECHARGE '+shieldCd.toFixed(1)+'S':'ESPACE — BOUCLIER PRÊT',20,25)}
  if(mechanic==='boss'){boss.x+=boss.vx*dt;if(boss.x<65||boss.x>W-65)boss.vx*=-1;boss.y=80+Math.sin(now/500)*18;boss.fire-=dt;if(boss.fire<=0){let a=Math.atan2(player.y-boss.y,player.x-boss.x);live.push({x:boss.x,y:boss.y,vx:Math.cos(a)*190,vy:Math.sin(a)*190,type:'bouleFeu',size:34,boss:true});boss.fire=.9}if(dragon.complete&&dragon.naturalWidth)ctx.drawImage(dragon,boss.x-58,boss.y-48,116,96);ctx.strokeStyle='#000';ctx.strokeRect(boss.x-48,boss.y-58,96,5);if(Math.abs(player.x-boss.x)<48&&Math.abs(player.y-boss.y)<48){finish(false);return}}
  spawnClock+=dt*60;if(spawnClock>=spawnRate){spawnClock=0;spawn()}if(Math.floor(elapsed)%10===0&&Math.floor(elapsed)!==Math.floor(elapsed-dt)){speed+=mode==='classic'?12:5;spawnRate=Math.max(55,spawnRate-5)}
  live.forEach(o=>{o.x+=o.vx*dt;o.y+=o.vy*dt});live=live.filter(o=>o.y<H+60&&o.x>-70&&o.x<W+70);
- live.forEach(o=>{let im=obs[o.type];if(im?.complete&&im.naturalWidth)ctx.drawImage(im,o.x-o.size/2,o.y-o.size/2,o.size,o.size);else{ctx.fillStyle='#555';ctx.fillRect(o.x-15,o.y-15,30,30)}if(!shield&&hit(o)){finish(false)}});
+ live.forEach(o=>{let im=obs[o.type];if(im?.complete&&im.naturalWidth)ctx.drawImage(im,o.x-o.size/2,o.y-o.size/2,o.size,o.size);else{ctx.fillStyle='#555';ctx.fillRect(o.x-15,o.y-15,30,30)}if(screen==='game'&&shield<=0&&hit(o)){finish(false)}});
  if(screen!=='game')return;
  if(keys.ArrowLeft||keys.a)player.x-=current().speed*dt;if(keys.ArrowRight||keys.d)player.x+=current().speed*dt;
  if((keys.ArrowUp||keys.w)&&player.y>=H-90)player.vy=-360;player.vy+=760*dt;player.y+=player.vy*dt;if(player.y>H-85){player.y=H-85;player.vy=0}
