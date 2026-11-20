@@ -1,24 +1,26 @@
-# Dodge la Cathédrale — édition native C++ / SDL3
+# Dodge la Cathédrale — application Windows native C++ / SDL3
 
-Cette branche contient une réécriture native Windows, indépendante du navigateur.
+Cette branche reconstruit le jeu en application Windows native, sans navigateur ni runtime JavaScript.
 
-## Compilation locale
-1. Installer Visual Studio 2022 avec le workload « Développement Desktop en C++ ».
-2. Installer CMake et vcpkg.
-3. Depuis la racine du dépôt :
+## Téléchargement
+Les builds Windows x64 et Windows ARM64 sont produits par GitHub Actions. L'archive ARM64 est à privilégier sur les PC Snapdragon X ; l'archive x64 est prévue pour les PC Intel/AMD et fonctionne aussi via émulation Windows sur ARM.
+
+## Compiler localement
+Installer Visual Studio 2022 (Desktop development with C++), CMake et vcpkg, puis :
 
 ```powershell
 cmake -S native -B native/build -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows
 cmake --build native/build --config Release
 ```
 
-Lancer `native/build/Release/DodgeCathedrale.exe` depuis la racine du dépôt afin que le dossier `assets` soit trouvé.
+L'exécutable et ses ressources sont copiés dans `native/build/Release`.
 
 ## Commandes
+- Entrée : démarrer / recommencer
 - Flèches gauche/droite : déplacement
 - Flèche haut : saut
-- P ou Échap : pause
-- Entrée : démarrer / recommencer
-- Échap depuis le menu : quitter
+- P : pause
+- Échap : reprendre depuis pause ou quitter depuis les menus
+- Touches 1 à 8 : choisir un personnage depuis le menu
 
-Le mode classique démarre directement en DIFFICILE. La simulation utilise un pas fixe de 1/60 s, et le rendu est découplé du gameplay.
+Le mode classique est verrouillé sur DIFFICILE. Le moteur utilise une simulation physique à pas fixe de 1/60 seconde, indépendante du taux de rafraîchissement.
