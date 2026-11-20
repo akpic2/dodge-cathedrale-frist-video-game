@@ -29,7 +29,7 @@ const get=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{return
 let coins=+(localStorage.getItem('coins')||0),best=+(localStorage.getItem('Best_score')||0),unlocked=new Set(get('unlocked',['HommeBleu','FemmeBleu']));
 unlocked.add('HommeBleu');unlocked.add('FemmeBleu');
 let selected=0,acc='none',tab='char',difficulty=1,mode='classic',level=0,screen='home';
-let score=0,elapsed=0,last=0,spawnClock=0,nextDifficultyAt=10,speed=150,spawnRate=2.5,live=[],player={x:W/2,y:H-85,vy:0},keys={},paused=false,shield=0,shieldCd=0,wind=0,windCd=0,boss={x:W/2,y:75,vx:115,fire:0};
+let score=0,elapsed=0,last=0,spawnClock=0,nextSpawnIn=1.8,nextDifficultyAt=10,speed=150,spawnRate=2.5,live=[],player={x:W/2,y:H-85,vy:0},keys={},paused=false,shield=0,shieldCd=0,wind=0,windCd=0,boss={x:W/2,y:75,vx:115,fire:0};
 const persist=()=>{localStorage.setItem('coins',coins);localStorage.setItem('unlocked',JSON.stringify([...unlocked]))};
 const current=()=>chars[selected];const charImageCache=new Map();function chosenImage(c){const src=(acc!=='none'&&c.acc[acc])||c.base;if(!charImageCache.has(src))charImageCache.set(src,image(src));return charImageCache.get(src)}
 const pad=n=>String(Math.max(0,Math.floor(n))).padStart(3,'0');
@@ -53,7 +53,7 @@ function renderShop(){
 }
 $$('[data-shop-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.shopTab;renderShop()});
 function start(){
- elapsed=0;score=0;spawnClock=0;nextDifficultyAt=10;live=[];player={x:W/2,y:H-85,vy:0};paused=false;shield=0;shieldCd=0;wind=0;windCd=0;boss={x:W/2,y:75,vx:115,fire:0};
+ elapsed=0;score=0;spawnClock=0;nextSpawnIn=spawnRate*(.65+Math.random()*.7);nextDifficultyAt=10;live=[];player={x:W/2,y:H-85,vy:0};paused=false;shield=0;shieldCd=0;wind=0;windCd=0;boss={x:W/2,y:75,vx:115,fire:0};
  let lv=levels[level],df=diffs[difficulty];speed=mode==='adventure'?lv.speed:df.speed;spawnRate=mode==='adventure'?lv.spawn:df.spawn;
  $('#game-mode-label').textContent=mode==='classic'?'MODE CLASSIQUE':'MODE AVENTURE — ÉTAPE '+(level+1)+'/05';$('#game-level-title').textContent=mode==='classic'?'La Cathédrale':lv.name;$('#game-overlay').hidden=true;$('#pause-button').textContent='PAUSE [P]';$('#game-status').textContent='EN COURS';
  screenTo('game','04 / 04','(04) — PARTIE EN COURS');last=performance.now();requestAnimationFrame(loop)
@@ -76,7 +76,26 @@ function loop(now){
  if(mechanic==='wind'){windCd-=dt;if(windCd<=0){wind=(Math.random()<.5?-1:1)*(85+Math.random()*110);windCd=2.5+Math.random()*3}player.x+=wind*dt;ctx.fillStyle='#000';ctx.font='16px sans-serif';ctx.fillText(wind>0?'→ → →':'← ← ←',W/2-35,55)}
  if(mechanic==='shield'){if(shield>0)shield=Math.max(0,shield-dt);if(shieldCd>0)shieldCd-=dt;if(keys.Space&&shieldCd<=0&&shield<=0){shield=3;shieldCd=8}ctx.fillStyle='#000';ctx.font='12px sans-serif';ctx.fillText(shield>0?'BOUCLIER '+shield.toFixed(1)+'S':shieldCd>0?'RECHARGE '+shieldCd.toFixed(1)+'S':'ESPACE — BOUCLIER PRÊT',20,25)}
  if(mechanic==='boss'){boss.x+=boss.vx*dt;if(boss.x<65||boss.x>W-65)boss.vx*=-1;boss.y=80+Math.sin(now/500)*18;boss.fire-=dt;if(boss.fire<=0){let a=Math.atan2(player.y-boss.y,player.x-boss.x);live.push({x:boss.x,y:boss.y,vx:Math.cos(a)*190,vy:Math.sin(a)*190,type:'bouleFeu',size:34,boss:true});boss.fire=.9}if(dragon.complete&&dragon.naturalWidth)ctx.drawImage(dragon,boss.x-58,boss.y-48,116,96);ctx.strokeStyle='#000';ctx.strokeRect(boss.x-48,boss.y-58,96,5);if(Math.abs(player.x-boss.x)<48&&Math.abs(player.y-boss.y)<48){finish(false);return}}
- spawnClock+=dt;if(spawnClock>=spawnRate){spawnClock=0;const burstSize=Math.min(4,1+Math.floor(elapsed/12));for(let i=0;i<burstSize;i++)spawn()}while(elapsed>=nextDifficultyAt){speed+=mode==='classic'?18:8;spawnRate=Math.max(.65,spawnRate-(mode==='classic'?.22:.12));nextDifficultyAt+=10}
+ spawnClock+=dt;
+ if(spawnClock>=nextSpawnIn){
+  spawnClock=0;
+  const roll=Math.random();
+  let burstSize=1;
+  if(elapsed<12) burstSize=roll<.24?2:1;
+  else if(elapsed<30) burstSize=roll<.14?3:roll<.52?2:1;
+  else if(elapsed<60) burstSize=roll<.18?4:roll<.58?3:roll<.88?2:1;
+  else burstSize=roll<.28?4:roll<.72?3:2;
+  for(let i=0;i<burstSize;i++) spawn();
+  // Le prochain groupe arrive à un délai aléatoire : fini le métronome régulier.
+  let variation=.55+Math.random()*1.15;
+  if(Math.random()<.2) variation*=.5; // petite rafale rapprochée
+  nextSpawnIn=Math.max(.42,spawnRate*variation);
+ }
+ while(elapsed>=nextDifficultyAt){
+  speed+=mode==='classic'?18:8;
+  spawnRate=Math.max(.65,spawnRate-(mode==='classic'?.22:.12));
+  nextDifficultyAt+=10;
+ }
  live.forEach(o=>{o.x+=o.vx*dt;o.y+=o.vy*dt});live=live.filter(o=>o.y<H+60&&o.x>-70&&o.x<W+70);
  live.forEach(o=>{let im=obs[o.type];if(im?.complete&&im.naturalWidth)ctx.drawImage(im,o.x-o.size/2,o.y-o.size/2,o.size,o.size);else{ctx.fillStyle='#555';ctx.fillRect(o.x-15,o.y-15,30,30)}if(screen==='game'&&shield<=0&&hit(o)){finish(false)}});
  if(screen!=='game')return;
