@@ -63,7 +63,7 @@ unlocked.add('HommeBleu');unlocked.add('FemmeBleu');
 const persist=()=>{localStorage.setItem('coins',coins);localStorage.setItem('unlocked',JSON.stringify([...unlocked]))};
 
 // ===== ÉTAT =====
-let selected=0,acc='none',tab='char',difficulty=1,mode='classic',level=0,screen='home';
+let selected=0,acc='none',tab='char',difficulty=2,mode='classic',level=0,screen='home';
 let player,gargoyles=[],score=0,scoreTime=0,frames=0,spd=150,spawnInt=200,levelTimer=0,lastTime=0,paused=false,keys={};
 // Timers en secondes : équilibrage de référence à 144 FPS, indépendant de l'écran.
 const REFERENCE_FPS=144,DIFFICULTY_STEP_SECONDS=200/REFERENCE_FPS;
