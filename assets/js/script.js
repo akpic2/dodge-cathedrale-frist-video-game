@@ -3,6 +3,7 @@ const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const cv=$('#game-canvas'),ctx=cv.getContext('2d'),W=720,H=560;
 const image=s=>{const i=new Image();i.src=s;return i};
 const GAME_BACKGROUND = '#f3f3f3';
+const bg = ['#f3f3f3', '#ededed', '#f5f5f5', '#e9e9e9', '#f0f0f0'];
 const dragon=image('assets/img/Dragon.png');
 const obs=Object.fromEntries(['Vitrail','Cloches','masqueJoyeux','masqueTriste','popCorn','Clap','Brique','Gargouille','BouleFeu_petite','BouleFeu2'].map((n,i)=>[ [ 'vitrail','cloche','masqueJoyeux','masqueTriste','popCorn','clap','brique','gargouille','bouleFeu','bouleFeu2'][i],image('assets/img/Obstacles/'+n+'.png')]));
 const chars=[
@@ -17,18 +18,18 @@ const chars=[
 ];
 const accessories=[{id:'none',name:'AUCUN',cost:0},{id:'lunettes',name:'LUNETTES',cost:80},{id:'aureole',name:'AURÉOLE',cost:120},{id:'biere',name:'BIÈRE',cost:60}];
 const levels=[
-{name:'Les Cloches',duration:25,speed:130,spawn:220,mechanic:'bells',bg:0,types:['vitrail','cloche']},
-{name:'Le Bouclier',duration:35,speed:190,spawn:140,mechanic:'shield',bg:1,types:['popCorn','clap']},
-{name:'La Tempête',duration:30,speed:160,spawn:180,mechanic:'wind',bg:2,types:['masqueJoyeux','masqueTriste']},
-{name:"L'Obscurité",duration:30,speed:170,spawn:150,mechanic:'darkness',bg:3,types:['brique','gargouille']},
-{name:'Le Grand Boss',duration:45,speed:200,spawn:160,mechanic:'boss',bg:4,types:['gargouille']}
+{name:'Les Cloches',duration:25,speed:130,spawn:2.8,mechanic:'bells',bg:0,types:['vitrail','cloche']},
+{name:'Le Bouclier',duration:35,speed:190,spawn:2.1,mechanic:'shield',bg:1,types:['popCorn','clap']},
+{name:'La Tempête',duration:30,speed:160,spawn:2.5,mechanic:'wind',bg:2,types:['masqueJoyeux','masqueTriste']},
+{name:"L'Obscurité",duration:30,speed:170,spawn:2.2,mechanic:'darkness',bg:3,types:['brique','gargouille']},
+{name:'Le Grand Boss',duration:45,speed:200,spawn:2.0,mechanic:'boss',bg:4,types:['gargouille']}
 ];
-const diffs=[{name:'FACILE',speed:100,spawn:300},{name:'NORMAL',speed:150,spawn:200},{name:'DIFFICILE',speed:220,spawn:120}];
+const diffs=[{name:'FACILE',speed:100,spawn:3.4},{name:'NORMAL',speed:150,spawn:2.5},{name:'DIFFICILE',speed:220,spawn:1.8}];
 const get=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}};
 let coins=+(localStorage.getItem('coins')||0),best=+(localStorage.getItem('Best_score')||0),unlocked=new Set(get('unlocked',['HommeBleu','FemmeBleu']));
 unlocked.add('HommeBleu');unlocked.add('FemmeBleu');
 let selected=0,acc='none',tab='char',difficulty=1,mode='classic',level=0,screen='home';
-let score=0,elapsed=0,last=0,spawnClock=0,speed=150,spawnRate=200,live=[],player={x:W/2,y:H-85,vy:0},keys={},paused=false,shield=0,shieldCd=0,wind=0,windCd=0,boss={x:W/2,y:75,vx:115,fire:0};
+let score=0,elapsed=0,last=0,spawnClock=0,nextDifficultyAt=10,speed=150,spawnRate=2.5,live=[],player={x:W/2,y:H-85,vy:0},keys={},paused=false,shield=0,shieldCd=0,wind=0,windCd=0,boss={x:W/2,y:75,vx:115,fire:0};
 const persist=()=>{localStorage.setItem('coins',coins);localStorage.setItem('unlocked',JSON.stringify([...unlocked]))};
 const current=()=>chars[selected];const charImageCache=new Map();function chosenImage(c){const src=(acc!=='none'&&c.acc[acc])||c.base;if(!charImageCache.has(src))charImageCache.set(src,image(src));return charImageCache.get(src)}
 const pad=n=>String(Math.max(0,Math.floor(n))).padStart(3,'0');
@@ -52,7 +53,7 @@ function renderShop(){
 }
 $$('[data-shop-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.shopTab;renderShop()});
 function start(){
- elapsed=0;score=0;spawnClock=0;live=[];player={x:W/2,y:H-85,vy:0};paused=false;shield=0;shieldCd=0;wind=0;windCd=0;boss={x:W/2,y:75,vx:115,fire:0};
+ elapsed=0;score=0;spawnClock=0;nextDifficultyAt=10;live=[];player={x:W/2,y:H-85,vy:0};paused=false;shield=0;shieldCd=0;wind=0;windCd=0;boss={x:W/2,y:75,vx:115,fire:0};
  let lv=levels[level],df=diffs[difficulty];speed=mode==='adventure'?lv.speed:df.speed;spawnRate=mode==='adventure'?lv.spawn:df.spawn;
  $('#game-mode-label').textContent=mode==='classic'?'MODE CLASSIQUE':'MODE AVENTURE — ÉTAPE '+(level+1)+'/05';$('#game-level-title').textContent=mode==='classic'?'La Cathédrale':lv.name;$('#game-overlay').hidden=true;$('#pause-button').textContent='PAUSE [P]';$('#game-status').textContent='EN COURS';
  screenTo('game','04 / 04','(04) — PARTIE EN COURS');last=performance.now();requestAnimationFrame(loop)
@@ -66,7 +67,7 @@ function finish(win=false){
  screenTo('result','04 / 04','(04) — RÉSULTAT')
 }
 function pause(){if(screen!=='game')return;paused=!paused;$('#game-overlay').hidden=!paused;$('#overlay-kicker').textContent='PARTIE SUSPENDUE';$('#overlay-title').textContent='En pause.';$('#overlay-copy').textContent='Votre progression est conservée.';$('#overlay-action').innerHTML='REPRENDRE <span>↗</span>';$('#pause-button').textContent=paused?'REPRENDRE [P]':'PAUSE [P]';$('#game-status').textContent=paused?'EN PAUSE':'EN COURS';if(!paused){last=performance.now();requestAnimationFrame(loop)}}
-function cover(){ctx.fillStyle=GAME_BACKGROUND;ctx.fillRect(0,0,W,H)}
+function cover(color=GAME_BACKGROUND){ctx.fillStyle=color;ctx.fillRect(0,0,W,H)}
 function spawn(){let lv=levels[level],types=mode==='adventure'?lv.types:['vitrail','gargouille'],type=types[Math.random()*types.length|0],side=mode==='adventure'&&['wind','shield','darkness'].includes(lv.mechanic)&&Math.random()<.28;live.push({x:side?(Math.random()<.5?-35:W+35):35+Math.random()*(W-70),y:side?H-80:-35,vx:side?(Math.random()<.5?1:-1)*speed*.55:0,vy:side?0:speed+35+Math.random()*50,type,size:44,boss:false})}
 function hit(o){return Math.abs(player.x-o.x)<(32+o.size)*.34&&Math.abs(player.y-o.y)<(48+o.size)*.34}
 function loop(now){
@@ -75,7 +76,7 @@ function loop(now){
  if(mechanic==='wind'){windCd-=dt;if(windCd<=0){wind=(Math.random()<.5?-1:1)*(85+Math.random()*110);windCd=2.5+Math.random()*3}player.x+=wind*dt;ctx.fillStyle='#000';ctx.font='16px sans-serif';ctx.fillText(wind>0?'→ → →':'← ← ←',W/2-35,55)}
  if(mechanic==='shield'){if(shield>0)shield=Math.max(0,shield-dt);if(shieldCd>0)shieldCd-=dt;if(keys.Space&&shieldCd<=0&&shield<=0){shield=3;shieldCd=8}ctx.fillStyle='#000';ctx.font='12px sans-serif';ctx.fillText(shield>0?'BOUCLIER '+shield.toFixed(1)+'S':shieldCd>0?'RECHARGE '+shieldCd.toFixed(1)+'S':'ESPACE — BOUCLIER PRÊT',20,25)}
  if(mechanic==='boss'){boss.x+=boss.vx*dt;if(boss.x<65||boss.x>W-65)boss.vx*=-1;boss.y=80+Math.sin(now/500)*18;boss.fire-=dt;if(boss.fire<=0){let a=Math.atan2(player.y-boss.y,player.x-boss.x);live.push({x:boss.x,y:boss.y,vx:Math.cos(a)*190,vy:Math.sin(a)*190,type:'bouleFeu',size:34,boss:true});boss.fire=.9}if(dragon.complete&&dragon.naturalWidth)ctx.drawImage(dragon,boss.x-58,boss.y-48,116,96);ctx.strokeStyle='#000';ctx.strokeRect(boss.x-48,boss.y-58,96,5);if(Math.abs(player.x-boss.x)<48&&Math.abs(player.y-boss.y)<48){finish(false);return}}
- spawnClock+=dt*60;if(spawnClock>=spawnRate){spawnClock=0;spawn()}if(Math.floor(elapsed)%10===0&&Math.floor(elapsed)!==Math.floor(elapsed-dt)){speed+=mode==='classic'?12:5;spawnRate=Math.max(55,spawnRate-5)}
+ spawnClock+=dt;if(spawnClock>=spawnRate){spawnClock=0;const burstSize=Math.min(4,1+Math.floor(elapsed/12));for(let i=0;i<burstSize;i++)spawn()}while(elapsed>=nextDifficultyAt){speed+=mode==='classic'?18:8;spawnRate=Math.max(.65,spawnRate-(mode==='classic'?.22:.12));nextDifficultyAt+=10}
  live.forEach(o=>{o.x+=o.vx*dt;o.y+=o.vy*dt});live=live.filter(o=>o.y<H+60&&o.x>-70&&o.x<W+70);
  live.forEach(o=>{let im=obs[o.type];if(im?.complete&&im.naturalWidth)ctx.drawImage(im,o.x-o.size/2,o.y-o.size/2,o.size,o.size);else{ctx.fillStyle='#555';ctx.fillRect(o.x-15,o.y-15,30,30)}if(screen==='game'&&shield<=0&&hit(o)){finish(false)}});
  if(screen!=='game')return;
