@@ -11,7 +11,7 @@ test('observe: 25 valeurs finies sur seed 3', () => {
   const rng = S.makeRng(99);
   const check = () => {
     const o = Sensors.observe(sim);
-    assert.equal(o.length, 25);
+    assert.equal(o.length, Sensors.N_INPUTS);
     for (const v of o) assert.ok(Number.isFinite(v));
   };
   let n = 0;
@@ -62,8 +62,8 @@ test('observe: latéraux gauche/droite', () => {
 });
 
 test('brain: poids', () => {
-  assert.equal(Brain.N_WEIGHTS, 756);
-  assert.equal(Brain.random(S.makeRng(1)).length, 756);
+  assert.ok(Brain.N_WEIGHTS > 2000);
+  assert.equal(Brain.random(S.makeRng(1)).length, Brain.N_WEIGHTS);
   assert.ok(Brain.random(S.makeRng(1)) instanceof Float32Array);
 });
 
@@ -78,14 +78,14 @@ test('brain: forward déterministe', () => {
 
 test('brain: poids nuls -> rien', () => {
   const w = new Float32Array(Brain.N_WEIGHTS);
-  const inp = new Float64Array(25).fill(0.5);
+  const inp = new Float64Array(Sensors.N_INPUTS).fill(0.5);
   assert.deepEqual(Brain.decide(w, inp), { left: false, right: false, jump: false });
 });
 
 test('brain: activations une par couche', () => {
   const w = Brain.random(S.makeRng(2));
   const acts = Brain.activations(w, new Float64Array(25));
-  assert.deepEqual(acts.map(a => a.length), [25, 16, 16, 4]);
+  assert.deepEqual(acts.map(a => a.length), [Sensors.N_INPUTS, 48, 32, 4]);
 });
 
 test('sources sans fonctions interdites', () => {
