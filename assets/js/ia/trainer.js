@@ -24,10 +24,10 @@
     if (s.population[0].length !== Brain.N_WEIGHTS) bad('cerveaux d\'une ancienne version du bot (capteurs différents)');
   }
 
-  // Banc de validation déterministe de 128 graines, strictement exclues de l'entraînement.
+  // Banc de validation déterministe de 256 graines, strictement exclues de l'entraînement.
   const BENCH_SEEDS = (function () {
     const r = Sim.makeRng(0x5eedbe7c), out = [];
-    for (let i = 0; i < 128; i++) out.push(Math.floor(r.next() * 4294967296) >>> 0);
+    for (let i = 0; i < 256; i++) out.push(Math.floor(r.next() * 4294967296) >>> 0);
     return out;
   })();
   const BENCH_SEED_SET = new Set(BENCH_SEEDS);
@@ -106,7 +106,7 @@
         spdMaxAfter = Evo.updateSpdMax(spdMaxBefore, championGames, opts).spdMax;
       }
 
-      // Banc d'essai du champion (128 graines fixes, sans limite de vitesse).
+      // Banc d'essai du champion (256 graines fixes, sans limite de vitesse).
       const benchCfg = Object.assign({}, cfg, { spdMax: Infinity });
       const bench = (await evaluate([population[championIndex]], BENCH_SEEDS, benchCfg))[0];
       const benchSorted = bench.games.map(g => g.survival !== undefined ? g.survival : g.score).sort((a, b) => a - b);
