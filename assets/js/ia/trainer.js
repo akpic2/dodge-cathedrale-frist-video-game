@@ -146,8 +146,10 @@
   }
 
   // Pool de workers : découpe en `size` lots contigus, un ArrayBuffer transféré par lot.
-  // Un lot sans réponse au bout de timeoutMs (60 s par défaut) fait échouer le job avec une erreur.
-  const JOB_TIMEOUT_MS = 60000;
+  // Option poolOpts.timeoutMs : un lot sans réponse au bout de ce délai fait échouer le job.
+  // Désactivé par défaut (0) : un lot de bons bots peut légitimement durer plusieurs minutes,
+  // et un worker qui plante est déjà détecté par onerror.
+  const JOB_TIMEOUT_MS = 0;
   function createWorkerPool(workerUrl, size, WorkerCtor, poolOpts) {
     const W = WorkerCtor || Worker;
     const timeoutMs = (poolOpts && poolOpts.timeoutMs) || JOB_TIMEOUT_MS;
@@ -185,7 +187,7 @@
         const per = Math.ceil(n / chunks);
         const sends = [];
         for (let c = 0; c * per < n; c++) sends.push([c * per, Math.min(n, (c + 1) * per)]);
-        const timer = setTimeout(() => {
+        const timer = timeoutMs > 0 && setTimeout(() => {
           if (!jobs.has(jobId)) return;
           jobs.delete(jobId);
           reject(new Error('un worker ne répond plus (aucune réponse en ' + Math.round(timeoutMs / 1000) + ' s)'));

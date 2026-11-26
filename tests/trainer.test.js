@@ -189,6 +189,6 @@ test('pool : un worker muet fait échouer le job (délai dépassé, en français
   const pool = T.createWorkerPool('x', 2, Mute, { timeoutMs: 30 });
   const rng = Sim.makeRng(1);
   await assert.rejects(pool.evaluate([Brain.random(rng), Brain.random(rng)], [1], {}), /ne répond plus/);
-  assert.equal(T.JOB_TIMEOUT_MS, 60000);
+  assert.equal(T.JOB_TIMEOUT_MS, 0);
   pool.terminate();
 });
