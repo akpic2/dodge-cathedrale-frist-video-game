@@ -60,6 +60,7 @@
       opts: {
         popSize: Math.max(2, Math.round(num('setPop', D.popSize))),
         gamesPerBot: Math.max(1, Math.round(num('setGames', D.gamesPerBot))),
+        workerCount: Math.max(0, Math.round(num('setWorkers', 0))),
         mutRate: num('setMutRate', D.mutRate), mutSigma: num('setMutSigma', D.mutSigma),
         holdSeconds: num('setHold', D.holdSeconds), raise: num('setRaise', D.raise),
         humanRecord: humanRecordValue(),
@@ -71,7 +72,7 @@
   function writeSettings(r) {
     const D = DodgeEvo.DEFAULTS, o = r.opts;
     const v = (k) => o[k] !== undefined ? o[k] : D[k];
-    $('setPop').value = v('popSize'); $('setGames').value = v('gamesPerBot');
+    $('setPop').value = v('popSize'); $('setGames').value = v('gamesPerBot'); $('setWorkers').value = v('workerCount');
     $('setMutRate').value = v('mutRate'); $('setMutSigma').value = v('mutSigma');
     $('setHold').value = v('holdSeconds'); $('setRaise').value = v('raise');
     $('setHuman').value = o.humanRecord !== undefined ? o.humanRecord : '';
@@ -178,6 +179,8 @@
     phase = 'busy'; updateButtons(); status('Réinitialisation…');
     await trainer.reset();
     const r = readSettings(); r.seed = randSeed();
+    if (pool) pool.terminate();
+    pool = DodgeTrainer.createWorkerPool('assets/js/ia/worker.js', DodgeTrainer.poolSize(navigator.hardwareConcurrency, r.opts.workerCount));
     makeTrainer(r);
     clearRun();
     phase = 'idle'; updateButtons();
@@ -499,9 +502,10 @@
       return;
     }
     try {
-      pool = DodgeTrainer.createWorkerPool('assets/js/ia/worker.js', DodgeTrainer.poolSize(navigator.hardwareConcurrency));
+      const initial = readSettings();
+      pool = DodgeTrainer.createWorkerPool('assets/js/ia/worker.js', DodgeTrainer.poolSize(navigator.hardwareConcurrency, initial.opts.workerCount));
     } catch (e) { showError('Impossible de lancer les workers : ' + e.message); return; }
-    const r = readSettings(); r.seed = randSeed();
+    const r = initial; r.seed = randSeed();
     makeTrainer(r);
     clearRun();
     let saved = null;
