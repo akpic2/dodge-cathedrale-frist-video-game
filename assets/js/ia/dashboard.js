@@ -501,8 +501,9 @@
       showError('Cette page doit être ouverte via un serveur local (ex. Live Server) : les workers ne marchent pas en double-clic.');
       return;
     }
+    let initial;
     try {
-      const initial = readSettings();
+      initial = readSettings();
       pool = DodgeTrainer.createWorkerPool('assets/js/ia/worker.js', DodgeTrainer.poolSize(navigator.hardwareConcurrency, initial.opts.workerCount));
     } catch (e) { showError('Impossible de lancer les workers : ' + e.message); return; }
     const r = initial; r.seed = randSeed();
