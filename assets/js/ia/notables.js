@@ -1,6 +1,6 @@
 (function (root) {
   const MILESTONES = [1000, 2000, 5000, 10000, 20000, 50000, 100000];
-  const PRIORITY = { record: 5, spdMaxUp: 5, humanBeaten: 4, milestone: 3, bigJump: 2, sideDodges: 1, champion: 0 };
+  const PRIORITY = { benchRecord: 6, record: 5, spdMaxUp: 5, humanBeaten: 4, milestone: 3, bigJump: 2, sideDodges: 1, champion: 0 };
 
   // 1234567 -> "1 234 567" (sans toLocaleString, dont le rendu varie)
   function fmt(n) {
@@ -164,7 +164,7 @@
   // Élément : {n, parts: [{type, label, priority}], priority, seq}. Plusieurs perfs d'une même partie
   // (record + gros bond + palier) fusionnent en un seul replay.
   const QUEUE_MAX = 5;
-  const QUEUE_REPLACING = ['record', 'bigJump', 'milestone', 'spdMaxUp', 'humanBeaten'];
+  const QUEUE_REPLACING = ['benchRecord', 'record', 'bigJump', 'milestone', 'spdMaxUp', 'humanBeaten'];
   function sameGame(a, b) { return a.gen === b.gen && a.seed === b.seed && a.score === b.score; }
   function queueable(n) { return n.priority > 0 && n.type !== 'sideDodges'; }
   function refreshItem(q) {

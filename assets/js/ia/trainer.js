@@ -21,7 +21,17 @@
       if (typeof s.notableState !== 'object' || !Array.isArray(s.notableState.milestonesDone)) bad('notableState.milestonesDone manquant');
     }
     if (typeof s.gen !== 'number') bad('génération manquante');
+    if (s.population[0].length !== Brain.N_WEIGHTS) bad('cerveaux d\'une ancienne version du bot (capteurs différents)');
   }
+
+  // Banc d'essai : 100 graines fixes, jamais utilisées pour l'entraînement, jouées sans limite de vitesse
+  // (le vrai jeu). Le champion de chaque génération y passe : c'est son « vrai niveau ».
+  const BENCH_SEEDS = (function () {
+    const r = Sim.makeRng(0x5eedbe7c), out = [];
+    for (let i = 0; i < 100; i++) out.push(Math.floor(r.next() * 4294967296) >>> 0);
+    return out;
+  })();
+  const INIT_THRESHOLD = 0.6;
 
   function createTrainer(conf) {
     const evaluate = conf.evaluate;
@@ -37,6 +47,7 @@
     let gen, population, spdMax, history, notables, notableState;
     // records[i] = {sum, count} : parties cumulées du bot i (les élites gardent leur passé).
     let records;
+    let speciesThreshold, benchBest; // seuil des familles ; meilleur score au banc {score, gen}
     const onError = conf.onError || function () {};
     let running = false, loopPromise = null, busy = false, inflight = null, loopToken = 0;
 
@@ -46,6 +57,7 @@
       population = [];
       for (let i = 0; i < popSize; i++) population.push(Brain.random(rng));
       records = population.map(() => null);
+      speciesThreshold = INIT_THRESHOLD; benchBest = null;
     }
     resetSync();
 
@@ -85,9 +97,26 @@
         spdMaxAfter = Evo.updateSpdMax(spdMaxBefore, championGames, opts).spdMax;
       }
 
+      // Banc d'essai du champion (100 graines fixes, sans limite de vitesse).
+      const benchCfg = Object.assign({}, cfg, { spdMax: Infinity });
+      const bench = (await evaluate([population[championIndex]], BENCH_SEEDS, benchCfg))[0];
+      const benchNotables = [];
+      if (!benchBest || bench.fitness > benchBest.score) {
+        let bg = bench.games[0];
+        for (const g of bench.games) if (g.score > bg.score) bg = g;
+        benchNotables.push({
+          id: 'benchRecord-' + gen, type: 'benchRecord', gen, score: bg.score, seed: bg.seed,
+          weights: new Float32Array(population[championIndex]), spdMax: Infinity,
+          cfg: { difficulty: cfg.difficulty, charSpeed: cfg.charSpeed },
+          label: 'Meilleur niveau réel : ' + Notables.fmt(bench.fitness) + ' de moyenne sur ' + BENCH_SEEDS.length + ' parties (gén. ' + gen + ')',
+          priority: Notables.PRIORITY.benchRecord, benchScore: bench.fitness
+        });
+        benchBest = { score: bench.fitness, gen };
+      }
+
       const det = Notables.detect({ gen, population, results, cfg, spdMaxBefore, spdMaxAfter, humanRecord: opts.humanRecord }, notableState);
       notableState = det.state;
-      for (const n of det.notables) { Notables.addNotable(notables, n); onNotable(n); }
+      for (const n of det.notables.concat(benchNotables)) { Notables.addNotable(notables, n); onNotable(n); }
 
       // best = meilleur score de sélection (fiable) ; mean/median = parties de la génération (5 par bot).
       const sorted = rawFitness.slice().sort((a, b) => a - b);
@@ -95,12 +124,17 @@
       let sum = 0;
       for (const f of rawFitness) sum += f;
       const median = n % 2 ? sorted[(n - 1) / 2] : (sorted[n / 2 - 1] + sorted[n / 2]) / 2;
-      history.push({ gen, best: fitness[championIndex], mean: sum / n, median, spdMax: spdMaxAfter });
+      // Familles de cerveaux (pour protéger les nouveautés), seuil ajusté pour en viser ~targetSpecies.
+      const species = Evo.speciate(population, speciesThreshold, Brain.NET_WEIGHTS);
+      speciesThreshold = Evo.adaptThreshold(speciesThreshold, species.count, opts);
+
+      history.push({ gen, best: fitness[championIndex], mean: sum / n, median, spdMax: spdMaxAfter,
+        bench: bench.fitness, species: species.count });
 
       const summary = { gen, seeds, history, spdMax: spdMaxAfter, population, results, championIndex };
       spdMax = spdMaxAfter;
-      const elites = Evo.eliteIndices(fitness, opts);
-      population = Evo.nextGeneration(population, fitness, rng, opts);
+      const elites = Evo.eliteIndices(fitness, opts, species);
+      population = Evo.nextGeneration(population, fitness, rng, opts, species);
       // Les élites sont en tête de la nouvelle population : elles gardent leur passé ; les enfants repartent de zéro.
       records = population.map((_, i) => i < elites.length ? newRecords[elites[i]] : null);
       gen++;
@@ -146,6 +180,7 @@
       return {
         gen, population: population.map(w => new Float32Array(w)), rngState: rng.getState(), spdMax,
         records: records.map(r => r ? { sum: r.sum, count: r.count } : null),
+        speciesThreshold, benchBest: benchBest ? Object.assign({}, benchBest) : null,
         history: history.map(h => Object.assign({}, h)), notables: notables.slice(),
         notableState: copyNotableState(notableState),
         opts: Object.assign({}, opts), cfg: Object.assign({}, cfg)
@@ -160,6 +195,8 @@
       // Anciennes sauvegardes sans `records` : tout le monde repart sans passé.
       records = population.map((_, i) => (Array.isArray(s.records) && s.records[i]) ? { sum: s.records[i].sum, count: s.records[i].count } : null);
       history = s.history.map(h => Object.assign({}, h));
+      speciesThreshold = typeof s.speciesThreshold === 'number' ? s.speciesThreshold : INIT_THRESHOLD;
+      benchBest = s.benchBest ? Object.assign({}, s.benchBest) : null;
       notables = Notables.thin(s.notables);
       notableState = copyNotableState(s.notableState);
     }
@@ -237,6 +274,6 @@
     return { evaluate, terminate };
   }
 
-  const DodgeTrainer = { poolSize, createTrainer, createWorkerPool, JOB_TIMEOUT_MS };
+  const DodgeTrainer = { BENCH_SEEDS, poolSize, createTrainer, createWorkerPool, JOB_TIMEOUT_MS };
   if (typeof module !== 'undefined' && module.exports) module.exports = DodgeTrainer; else root.DodgeTrainer = DodgeTrainer;
 })(typeof self !== 'undefined' ? self : globalThis);

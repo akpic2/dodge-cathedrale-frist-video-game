@@ -4,7 +4,8 @@
   const COLORS = { best: '#000', mean: '#777', median: '#b3b3b3', spd: '#000', human: '#777', grid: '#e7e7e7', axis: '#cfcfcf', text: '#777' };
   const FONT = '"Inter Tight",Arial,sans-serif';
   const STYLE = {
-    best:   { color: COLORS.best, width: 2, dash: [] },
+    bench:  { color: '#000', width: 2.5, dash: [] },
+    best:   { color: '#555', width: 1.2, dash: [] },
     mean:   { color: COLORS.mean, width: 1.5, dash: [] },
     median: { color: COLORS.median, width: 1.5, dash: [2, 3] },
     spdMax: { color: COLORS.spd, width: 1, dash: [5, 4] },
@@ -54,6 +55,7 @@
     let maxS = o.humanRecord > 0 ? o.humanRecord : 0, maxV = 0, anySpd = false;
     for (const h of history) {
       if (h.best > maxS) maxS = h.best;
+      if (isFinite(h.bench) && h.bench > maxS) maxS = h.bench;
       if (isFinite(h.spdMax)) { anySpd = true; if (h.spdMax > maxV) maxV = h.spdMax; }
     }
     maxS = niceMax(maxS * 1.05); maxV = niceMax(maxV * 1.1);
@@ -109,6 +111,7 @@
     line('median', Y);
     line('mean', Y);
     line('best', Y);
+    line('bench', Y);
   }
 
   const DodgeCharts = { COLORS, drawHistory };

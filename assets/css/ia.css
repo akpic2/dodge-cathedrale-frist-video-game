@@ -153,7 +153,8 @@ input::placeholder { color: var(--pale); }
 .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--muet); }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .legend i { display: inline-block; width: 16px; height: 0; border-top: 1px solid #000; }
-.legend i.l-best { border-top-width: 2px; }
+.legend i.l-bench { border-top-width: 3px; }
+.legend i.l-best { border-top: 1.2px solid #555; }
 .legend i.l-mean { border-top: 1.5px solid #777; }
 .legend i.l-median { border-top: 1.5px dotted #b3b3b3; }
 .legend i.l-spd { border-top: 1px dashed #000; }
@@ -190,7 +191,8 @@ input::placeholder { color: var(--pale); }
 .t-spdMaxUp .n-type::before { content: "↑"; }
 .t-sideDodges .n-type::before { content: "↔"; }
 .t-champion .n-type::before { content: "●"; }
-.t-record .n-type, .t-humanBeaten .n-type { background: #000; border-color: #000; color: #fff; }
+.t-benchRecord .n-type::before { content: "★"; }
+.t-benchRecord .n-type, .t-record .n-type, .t-humanBeaten .n-type { background: #000; border-color: #000; color: #fff; }
 .t-spdMaxUp .n-type { border-color: #000; color: #000; }
 .icon-btn {
   font-size: 11px; line-height: 1; background: none; border: 1px solid var(--pale);

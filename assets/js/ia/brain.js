@@ -1,16 +1,21 @@
 (function (root) {
-  const LAYERS = [25, 16, 16, 4];
+  const Sensors = (typeof DodgeSensors !== 'undefined') ? DodgeSensors : require('./sensors.js');
+  const LAYERS = [Sensors.N_INPUTS, 24, 24, 4];
   // Disposition des poids : pour chaque couche l (de LAYERS[l] vers LAYERS[l+1]),
   // d'abord les poids en ligne-majeure [out][in], puis les LAYERS[l+1] biais.
-  // Total : (25*16+16) + (16*16+16) + (16*4+4) = 416 + 272 + 68 = 756.
-  let N_WEIGHTS = 0;
-  for (let l = 0; l < LAYERS.length - 1; l++) N_WEIGHTS += LAYERS[l] * LAYERS[l + 1] + LAYERS[l + 1];
+  let NET_WEIGHTS = 0;
+  for (let l = 0; l < LAYERS.length - 1; l++) NET_WEIGHTS += LAYERS[l] * LAYERS[l + 1] + LAYERS[l + 1];
+  // + 1 case à la fin : la force de mutation propre au bot (mutation auto-adaptative), ignorée par le réseau.
+  const N_WEIGHTS = NET_WEIGHTS + 1;
+  const SIGMA_INDEX = NET_WEIGHTS;
+  const INIT_SIGMA = 0.3;
 
   const INIT_SCALE = 1; // poids initiaux uniformes dans [-1, 1)
 
   function random(rng) {
     const w = new Float32Array(N_WEIGHTS);
-    for (let i = 0; i < N_WEIGHTS; i++) w[i] = (rng.next() * 2 - 1) * INIT_SCALE;
+    for (let i = 0; i < NET_WEIGHTS; i++) w[i] = (rng.next() * 2 - 1) * INIT_SCALE;
+    w[SIGMA_INDEX] = INIT_SIGMA;
     return w;
   }
 
@@ -58,6 +63,6 @@
     return acts;
   }
 
-  const DodgeBrain = { LAYERS, N_WEIGHTS, random, forward, decide, activations };
+  const DodgeBrain = { LAYERS, N_WEIGHTS, NET_WEIGHTS, SIGMA_INDEX, INIT_SIGMA, random, forward, decide, activations };
   if (typeof module !== 'undefined' && module.exports) module.exports = DodgeBrain; else root.DodgeBrain = DodgeBrain;
 })(typeof self !== 'undefined' ? self : globalThis);

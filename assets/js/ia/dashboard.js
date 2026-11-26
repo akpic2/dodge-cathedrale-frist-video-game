@@ -12,7 +12,7 @@
   ];
   const TYPE_LABEL = {
     record: 'Record', bigJump: 'Gros bond', milestone: 'Palier', spdMaxUp: 'Limite',
-    sideDodges: 'Esquives', humanBeaten: 'Humain battu', champion: 'Champion',
+    sideDodges: 'Esquives', humanBeaten: 'Humain battu', benchRecord: 'Niveau réel', champion: 'Champion',
   };
   const SAMPLE = 30, LIVE_SPEED = 4, AUTOSAVE_MS = 60000, END_HOLD_MS = 2500;
   const params = new URLSearchParams(location.search);
@@ -47,7 +47,7 @@
     $('setChar').appendChild(o);
   }
   $('setChar').value = 'HommeBleu';
-  if (params.get('pop')) $('setPop').value = parseInt(params.get('pop'), 10) || 300;
+  if (params.get('pop')) $('setPop').value = parseInt(params.get('pop'), 10) || 1000;
   if (params.get('games')) $('setGames').value = parseInt(params.get('games'), 10) || 15;
 
   function humanRecordValue() {

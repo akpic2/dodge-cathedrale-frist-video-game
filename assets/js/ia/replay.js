@@ -28,19 +28,13 @@
     return Sim.createSim({ seed: spec.seed, difficulty: cfg.difficulty, charSpeed: cfg.charSpeed, spdMax: spec.spdMax });
   }
 
-  // Les mêmes 5 obstacles tombants que sensors.js retient (les plus proches en temps d'impact).
+  // Obstacles qui comptent pour les capteurs (carte de danger + latéraux), du plus urgent au moins urgent.
   function observedObstacles(sim) {
-    const p = sim.player, pTop = p.y + p.h * 0.15, pBottom = p.y + p.h * 0.90;
-    const list = [];
-    for (const g of sim.obstacles) {
-      if (g.fromRight) continue;
-      const hh = g.h / 2 * 0.55;
-      if (g.y - hh >= pBottom) continue;
-      const t = g.vy > 0 ? (pTop - (g.y + hh)) / g.vy : 2;
-      list.push({ g, t });
-    }
-    list.sort((a, b) => a.t - b.t);
-    return list.slice(0, 5).map(e => e.g);
+    const p = sim.player;
+    return Sensors.seenObstacles(sim).map(g => {
+      const t = g.fromRight ? Math.abs(g.x - p.x) / (Math.abs(g.vx) || 1) : (p.y - g.y) / (g.vy || 1);
+      return { g, t };
+    }).sort((a, b) => a.t - b.t).slice(0, 6).map(e => e.g);
   }
 
   function drawObserved(ctx, sim) {
