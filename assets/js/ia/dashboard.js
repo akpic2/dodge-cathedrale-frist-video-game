@@ -48,7 +48,7 @@
   }
   $('setChar').value = 'HommeBleu';
   if (params.get('pop')) $('setPop').value = parseInt(params.get('pop'), 10) || 300;
-  if (params.get('games')) $('setGames').value = parseInt(params.get('games'), 10) || 5;
+  if (params.get('games')) $('setGames').value = parseInt(params.get('games'), 10) || 15;
 
   function humanRecordValue() {
     const v = parseFloat($('setHuman').value);

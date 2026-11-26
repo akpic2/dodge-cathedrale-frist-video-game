@@ -1,7 +1,7 @@
 (function (root) {
   const DEFAULTS = {
-    popSize: 300, eliteFrac: 0.05, tournament: 5, mutRate: 0.1, mutSigma: 0.3,
-    gamesPerBot: 5, holdSeconds: 20, raise: 1.05, introSeconds: 40,
+    popSize: 300, eliteFrac: 0.05, tournament: 3, mutRate: 0.1, mutSigma: 0.3,
+    gamesPerBot: 15, holdSeconds: 20, raise: 1.05, introSeconds: 40,
     // Repêchage : le top rescueFrac rejoue rescueGames parties de plus avant la sélection.
     rescueFrac: 0.2, rescueGames: 20,
     // Mémoire des survivants : on garde au plus memoryGames parties dans la moyenne cumulée.
