@@ -124,7 +124,7 @@
     summary.cfg = run.cfg;
     history = summary.history;
     lastSummary = summary;
-    const games = run.opts.popSize * run.opts.gamesPerBot;
+    const games = summary.gamesEvaluated || run.opts.popSize * run.opts.gamesPerBot;
     rateWin.push({ t: performance.now(), games });
     if (rateWin.length > 11) rateWin.shift();
     if (mode === 'live' && $('liveToggle').checked) { live.show(summary, SAMPLE, LIVE_SPEED); $('stageLabel').textContent = liveLabel(); }
@@ -260,7 +260,8 @@
   function updateStats() {
     const gens = history.length;
     $('stGen').textContent = fmt(gens);
-    $('stGames').textContent = run ? fmt(gens * run.opts.popSize * run.opts.gamesPerBot) : '0';
+    const totalGames = history.reduce((total, h) => total + (h.gamesEvaluated || (run ? run.opts.popSize * run.opts.gamesPerBot : 0)), 0);
+    $('stGames').textContent = fmt(totalGames);
     let rate = '–';
     if (phase === 'running' && rateWin.length >= 2) {
       let g = 0; for (let i = 1; i < rateWin.length; i++) g += rateWin[i].games;
