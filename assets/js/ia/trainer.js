@@ -42,6 +42,22 @@
   }
   const INIT_THRESHOLD = 0.6;
 
+  // Version coopérative de la spéciation : même résultat que Evo.speciate(),
+  // mais cède régulièrement le thread principal pour garder l'interface fluide.
+  async function speciateYielding(pop, threshold, nNet) {
+    const reps = [], ids = new Array(pop.length), sizes = [];
+    for (let i = 0; i < pop.length; i++) {
+      let sp = -1;
+      for (let r = 0; r < reps.length; r++) {
+        if (Evo.distance(pop[i], pop[reps[r]], nNet) < threshold) { sp = r; break; }
+      }
+      if (sp < 0) { sp = reps.length; reps.push(i); sizes.push(0); }
+      ids[i] = sp; sizes[sp]++;
+      if ((i & 3) === 3) await new Promise(resolve => setTimeout(resolve, 0));
+    }
+    return { ids, sizes, count: reps.length };
+  }
+
   function createTrainer(conf) {
     const evaluate = conf.evaluate;
     const seed = conf.seed === undefined ? 1 : conf.seed;
@@ -137,7 +153,7 @@
       for (const f of rawFitness) sum += f;
       const median = n % 2 ? sorted[(n - 1) / 2] : (sorted[n / 2 - 1] + sorted[n / 2]) / 2;
       // Familles de cerveaux (pour protéger les nouveautés), seuil ajusté pour en viser ~targetSpecies.
-      const species = Evo.speciate(population, speciesThreshold, Brain.NET_WEIGHTS);
+      const species = await speciateYielding(population, speciesThreshold, Brain.NET_WEIGHTS);
       speciesThreshold = Evo.adaptThreshold(speciesThreshold, species.count, opts);
 
       const gamesEvaluated = results.reduce((total, r) => total + r.games.length, 0) + bench.games.length;
