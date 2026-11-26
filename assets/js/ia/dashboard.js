@@ -260,7 +260,10 @@
   function updateStats() {
     const gens = history.length;
     $('stGen').textContent = fmt(gens);
-    const totalGames = history.reduce((total, h) => total + (h.gamesEvaluated || (run ? run.opts.popSize * run.opts.gamesPerBot : 0)), 0);
+    const legacyGamesPerGeneration = run
+      ? run.opts.popSize * run.opts.gamesPerBot + Math.ceil(run.opts.popSize * 0.2) * 20 + 100
+      : 0;
+    const totalGames = history.reduce((total, h) => total + (h.gamesEvaluated || legacyGamesPerGeneration), 0);
     $('stGames').textContent = fmt(totalGames);
     let rate = '–';
     if (phase === 'running' && rateWin.length >= 2) {
