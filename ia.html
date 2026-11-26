@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Labo IA · Dodge la Cathédrale</title>
+  <link rel="icon" href="data:,">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/ia.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">
+    <div class="brand-title">Dodge la Cathédrale</div>
+    <div class="brand-sub">Labo IA · neuro-évolution</div>
+  </div>
+  <div class="stats">
+    <div class="stat"><span class="stat-label">Génération</span><span class="stat-value" id="stGen">0</span></div>
+    <div class="stat"><span class="stat-label">Parties jouées</span><span class="stat-value" id="stGames">0</span></div>
+    <div class="stat"><span class="stat-label">Parties/s</span><span class="stat-value" id="stRate">–</span></div>
+    <div class="stat"><span class="stat-label">Temps écoulé</span><span class="stat-value" id="stTime">0:00</span></div>
+    <div class="stat"><span class="stat-label">Limite de vitesse</span><span class="stat-value" id="stSpd">∞</span></div>
+    <div class="stat stat-gold"><span class="stat-label">Record</span><span class="stat-value" id="stRecord">0</span></div>
+  </div>
+</header>
+
+<div id="errorBanner" class="banner banner-error" hidden>
+  <span id="errorText"></span>
+  <button type="button" class="btn-ghost" id="errorClose" aria-label="Fermer">✕</button>
+</div>
+<div id="infoBanner" class="banner banner-info" hidden></div>
+
+<main class="layout">
+  <section class="col-main">
+    <div class="panel stage">
+      <div class="stage-banner" id="stageBanner">
+        <span class="stage-mode" id="stageMode">Direct</span>
+        <span class="stage-label" id="stageLabel">Démarre l'entraînement pour voir les bots jouer.</span>
+        <span class="stage-score" id="stageScore"></span>
+      </div>
+      <div class="stage-canvas">
+        <canvas id="liveCanvas" width="960" height="840"></canvas>
+        <canvas id="replayCanvas" width="960" height="840" hidden></canvas>
+        <div class="stage-off" id="stageOff" hidden>
+          <div>Vue en direct coupée</div>
+          <small>L'entraînement tourne à pleine vitesse.</small>
+        </div>
+      </div>
+      <div class="stage-controls">
+        <div class="ctrl-group">
+          <label class="switch"><input type="checkbox" id="liveToggle" checked><span>Vue en direct</span></label>
+          <label class="switch"><input type="checkbox" id="autoToggle" checked><span>Auto-sélection</span></label>
+          <span class="queue-badge" id="queueBadge" title="Perfs en attente">0 en file</span>
+        </div>
+        <div class="ctrl-group" id="replayControls">
+          <button type="button" class="btn" id="rpPlay" disabled>⏸ Pause</button>
+          <label class="field-inline">Vitesse
+            <select id="rpSpeed">
+              <option value="0.5">×0,5</option><option value="1">×1</option><option value="2" selected>×2</option>
+              <option value="4">×4</option><option value="8">×8</option>
+            </select>
+          </label>
+          <label class="switch"><input type="checkbox" id="brainToggle"><span>Cerveau</span></label>
+          <button type="button" class="btn" id="rpBack" disabled>Retour au direct</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Progression</h2>
+        <div class="legend">
+          <span><i style="background:#f0c840"></i>Meilleur</span>
+          <span><i style="background:#7c5cf0"></i>Moyenne</span>
+          <span><i style="background:#4fd1c5"></i>Médiane</span>
+          <span><i class="dash" style="border-color:#ff7a9a"></i>Limite de vitesse (axe droit)</span>
+        </div>
+      </div>
+      <canvas id="chart" class="chart"></canvas>
+    </div>
+  </section>
+
+  <aside class="col-side">
+    <div class="panel">
+      <div class="btn-row">
+        <button type="button" class="btn btn-primary" id="btnMain">Démarrer</button>
+        <button type="button" class="btn" id="btnReset">Réinitialiser</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="btn" id="btnExport">Exporter JSON</button>
+        <button type="button" class="btn" id="btnImport">Importer JSON</button>
+        <input type="file" id="importFile" accept="application/json,.json" hidden>
+      </div>
+      <div class="status" id="status">Prêt.</div>
+    </div>
+
+    <div class="panel limit">
+      <h2>Limite trouvée</h2>
+      <div class="limit-value" id="limitValue">Aucune limite pour l'instant</div>
+      <p class="muted" id="limitHint">Elle sera fixée quand le champion tiendra 40 s en moyenne, puis relevée de 5 % chaque fois qu'il tient 20 s à la limite.</p>
+      <div class="code-row" id="limitCodeRow" hidden>
+        <code id="limitCode"></code>
+        <button type="button" class="btn btn-small" id="limitCopy">Copier</button>
+      </div>
+      <p class="muted small" id="limitCodeHint" hidden>À recopier dans <code>assets/js/sim.js</code> quand tu juges l'entraînement terminé.</p>
+    </div>
+
+    <div class="panel notables">
+      <div class="panel-head">
+        <h2>Perfs notables</h2>
+        <select id="notableFilter">
+          <option value="interesting" selected>Perfs (sans champions)</option>
+          <option value="all">Tout</option>
+          <option value="record">Records</option>
+          <option value="bigJump">Gros bonds</option>
+          <option value="milestone">Paliers</option>
+          <option value="spdMaxUp">Limite de vitesse</option>
+          <option value="sideDodges">Esquives latérales</option>
+          <option value="humanBeaten">Record humain</option>
+          <option value="champion">Champions</option>
+        </select>
+      </div>
+      <ul class="notable-list" id="notableList"></ul>
+    </div>
+
+    <div class="panel settings">
+      <h2>Réglages</h2>
+      <div class="grid2">
+        <label>Population<input type="number" id="setPop" min="10" max="5000" step="10" value="300"></label>
+        <label>Parties par bot<input type="number" id="setGames" min="1" max="20" step="1" value="5"></label>
+        <label>Taux de mutation<input type="number" id="setMutRate" min="0" max="1" step="0.01" value="0.1"></label>
+        <label>Sigma de mutation<input type="number" id="setMutSigma" min="0" max="5" step="0.05" value="0.3"></label>
+        <label>Difficulté
+          <select id="setDiff">
+            <option value="easy">Facile</option><option value="normal" selected>Normal</option><option value="hard">Difficile</option>
+          </select>
+        </label>
+        <label>Perso
+          <select id="setChar"></select>
+        </label>
+      </div>
+      <p class="muted small">Ces réglages s'appliquent à la prochaine réinitialisation.</p>
+      <div class="grid2">
+        <label>Record humain<input type="number" id="setHuman" min="0" step="1" placeholder="optionnel"></label>
+        <label>Tenue à la limite (s)<input type="number" id="setHold" min="1" max="600" step="1" value="20"></label>
+        <label>Hausse de la limite (×)<input type="number" id="setRaise" min="1" max="2" step="0.01" value="1.05"></label>
+      </div>
+      <p class="muted small">Ces trois-là s'appliquent tout de suite.</p>
+    </div>
+  </aside>
+</main>
+
+<script src="assets/js/sim.js"></script>
+<script src="assets/js/render.js"></script>
+<script src="assets/js/ia/sensors.js"></script>
+<script src="assets/js/ia/brain.js"></script>
+<script src="assets/js/ia/evaluate.js"></script>
+<script src="assets/js/ia/evolution.js"></script>
+<script src="assets/js/ia/notables.js"></script>
+<script src="assets/js/ia/trainer.js"></script>
+<script src="assets/js/ia/storage.js"></script>
+<script src="assets/js/ia/charts.js"></script>
+<script src="assets/js/ia/replay.js"></script>
+<script src="assets/js/ia/dashboard.js"></script>
+</body>
+</html>
