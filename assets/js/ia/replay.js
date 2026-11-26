@@ -228,10 +228,11 @@
         if (!sim || ended) return;
         playing = true;
         if (worker && !workerFailed) {
-          worker.postMessage({ type: 'play', spec: {
+          if (s) worker.postMessage({ type: 'play', spec: {
             seed: spec.seed, cfg: spec.cfg || {}, spdMax: spec.spdMax,
             weights: Array.from(spec.weights), score: spec.score
           }, speed });
+          else worker.postMessage({ type: 'resume', speed });
         } else startFallback();
         draw();
       },
