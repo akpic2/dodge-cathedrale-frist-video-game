@@ -21,7 +21,7 @@
   let pool = null, trainer = null;
   let run = null;           // {seed, opts, cfg, charId}
   let phase = 'idle';       // idle | running | paused | busy
-  let history = [], notables = [], lastSummary = null; // notables : mêmes objets et même éclaircissement que le trainer
+  let history = [], notables = [], lastSummary = null, totalGamesEvaluated = 0; // notables : mêmes objets et même éclaircissement que le trainer
   let elapsedMs = 0, runStartedAt = 0, rateWin = [];
   let queue = [], queueSeq = 0, mode = 'live', current = null, endTimer = 0, playToken = 0;
   let importing = false, saving = false;
@@ -141,6 +141,7 @@
     history = summary.history;
     lastSummary = summary;
     const games = summary.gamesEvaluated || run.opts.popSize * run.opts.gamesPerBot;
+    totalGamesEvaluated += games;
     rateWin.push({ t: performance.now(), games });
     if (rateWin.length > 11) rateWin.shift();
     if (mode === 'live' && $('liveToggle').checked) { live.show(summary, SAMPLE, LIVE_SPEED); $('stageLabel').textContent = liveLabel(); }
@@ -204,7 +205,7 @@
   }
 
   function clearRun() {
-    history = []; notables = []; lastSummary = null; queue = []; updateQueueBadge();
+    history = []; notables = []; lastSummary = null; totalGamesEvaluated = 0; queue = []; updateQueueBadge();
     elapsedMs = 0; runStartedAt = 0; rateWin = [];
     live.clear();
     backToLive();
@@ -230,6 +231,7 @@
     install(b);
     clearRun();
     history = s.history; notables = DodgeNotables.thin(s.notables);
+    totalGamesEvaluated = history.reduce((total, h) => total + (h.gamesEvaluated || legacyGamesPerGeneration), 0);
     elapsedMs = s.elapsedMs || 0;
     writeSettings(run);
     phase = s.gen > 0 ? 'paused' : 'idle';
@@ -288,8 +290,7 @@
     const legacyGamesPerGeneration = run
       ? (run.legacyGamesPerGeneration || (run.opts.popSize * run.opts.gamesPerBot + Math.ceil(run.opts.popSize * 0.2) * 20 + 100))
       : 0;
-    const totalGames = history.reduce((total, h) => total + (h.gamesEvaluated || legacyGamesPerGeneration), 0);
-    $('stGames').textContent = fmt(totalGames);
+    $('stGames').textContent = fmt(totalGamesEvaluated);
     let rate = '–';
     if (phase === 'running' && rateWin.length >= 2) {
       let g = 0; for (let i = 1; i < rateWin.length; i++) g += rateWin[i].games;
