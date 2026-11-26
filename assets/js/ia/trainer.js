@@ -35,6 +35,8 @@
 
     const rng = Sim.makeRng(seed);
     let gen, population, spdMax, history, notables, notableState;
+    // records[i] = {sum, count} : parties cumulées du bot i (les élites gardent leur passé).
+    let records;
     const onError = conf.onError || function () {};
     let running = false, loopPromise = null, busy = false, inflight = null, loopToken = 0;
 
@@ -43,6 +45,7 @@
       gen = 0; spdMax = Infinity; history = []; notables = []; notableState = null;
       population = [];
       for (let i = 0; i < popSize; i++) population.push(Brain.random(rng));
+      records = population.map(() => null);
     }
     resetSync();
 
@@ -50,8 +53,26 @@
       const seeds = [];
       for (let i = 0; i < gamesPerBot; i++) seeds.push(Math.floor(rng.next() * 4294967296) >>> 0);
       const spdMaxBefore = spdMax;
-      const results = await evaluate(population, seeds, Object.assign({}, cfg, { spdMax: spdMaxBefore }));
-      const fitness = results.map(r => r.fitness);
+      const playCfg = Object.assign({}, cfg, { spdMax: spdMaxBefore });
+      const results = await evaluate(population, seeds, playCfg);
+      // Score brut de la génération (5 parties) : sert aux courbes moyenne/médiane.
+      const rawFitness = results.map(r => r.fitness);
+
+      // Repêchage : le top rejoue des parties en plus, sur de nouvelles graines communes.
+      const rescued = Evo.rescueIndices(rawFitness, opts);
+      const rescueGames = opts.rescueGames !== undefined ? opts.rescueGames : Evo.DEFAULTS.rescueGames;
+      if (rescued.length) {
+        const extraSeeds = [];
+        for (let i = 0; i < rescueGames; i++) extraSeeds.push(Math.floor(rng.next() * 4294967296) >>> 0);
+        const extra = await evaluate(rescued.map(i => population[i]), extraSeeds, playCfg);
+        rescued.forEach((i, k) => { results[i] = { fitness: results[i].fitness, games: results[i].games.concat(extra[k].games) }; });
+      }
+
+      // Score de sélection = moyenne cumulée (parties de cette génération + passé des survivants).
+      const newRecords = results.map((r, i) => Evo.addToRecord(records[i], r.games, opts));
+      const fitness = newRecords.map(rec => rec.count ? rec.sum / rec.count : 0);
+      for (let i = 0; i < results.length; i++) results[i].fitness = fitness[i];
+
       let championIndex = 0;
       for (let i = 1; i < fitness.length; i++) if (fitness[i] > fitness[championIndex]) championIndex = i;
       const championGames = results[championIndex].games;
@@ -68,16 +89,20 @@
       notableState = det.state;
       for (const n of det.notables) { Notables.addNotable(notables, n); onNotable(n); }
 
-      const sorted = fitness.slice().sort((a, b) => a - b);
+      // best = meilleur score de sélection (fiable) ; mean/median = parties de la génération (5 par bot).
+      const sorted = rawFitness.slice().sort((a, b) => a - b);
       const n = sorted.length;
       let sum = 0;
-      for (const f of fitness) sum += f;
+      for (const f of rawFitness) sum += f;
       const median = n % 2 ? sorted[(n - 1) / 2] : (sorted[n / 2 - 1] + sorted[n / 2]) / 2;
-      history.push({ gen, best: sorted[n - 1], mean: sum / n, median, spdMax: spdMaxAfter });
+      history.push({ gen, best: fitness[championIndex], mean: sum / n, median, spdMax: spdMaxAfter });
 
       const summary = { gen, seeds, history, spdMax: spdMaxAfter, population, results, championIndex };
       spdMax = spdMaxAfter;
+      const elites = Evo.eliteIndices(fitness, opts);
       population = Evo.nextGeneration(population, fitness, rng, opts);
+      // Les élites sont en tête de la nouvelle population : elles gardent leur passé ; les enfants repartent de zéro.
+      records = population.map((_, i) => i < elites.length ? newRecords[elites[i]] : null);
       gen++;
       onGeneration(summary);
     }
@@ -120,6 +145,7 @@
     function getState() {
       return {
         gen, population: population.map(w => new Float32Array(w)), rngState: rng.getState(), spdMax,
+        records: records.map(r => r ? { sum: r.sum, count: r.count } : null),
         history: history.map(h => Object.assign({}, h)), notables: notables.slice(),
         notableState: copyNotableState(notableState),
         opts: Object.assign({}, opts), cfg: Object.assign({}, cfg)
@@ -131,6 +157,8 @@
       await settle();
       gen = s.gen; spdMax = s.spdMax; rng.setState(s.rngState);
       population = s.population.map(w => new Float32Array(w));
+      // Anciennes sauvegardes sans `records` : tout le monde repart sans passé.
+      records = population.map((_, i) => (Array.isArray(s.records) && s.records[i]) ? { sum: s.records[i].sum, count: s.records[i].count } : null);
       history = s.history.map(h => Object.assign({}, h));
       notables = Notables.thin(s.notables);
       notableState = copyNotableState(s.notableState);

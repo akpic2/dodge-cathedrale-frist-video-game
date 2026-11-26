@@ -1,7 +1,11 @@
 (function (root) {
   const DEFAULTS = {
     popSize: 300, eliteFrac: 0.05, tournament: 5, mutRate: 0.1, mutSigma: 0.3,
-    gamesPerBot: 5, holdSeconds: 20, raise: 1.05, introSeconds: 40
+    gamesPerBot: 5, holdSeconds: 20, raise: 1.05, introSeconds: 40,
+    // Repêchage : le top rescueFrac rejoue rescueGames parties de plus avant la sélection.
+    rescueFrac: 0.2, rescueGames: 20,
+    // Mémoire des survivants : on garde au plus memoryGames parties dans la moyenne cumulée.
+    memoryGames: 50
   };
 
   function opt(opts) {
@@ -17,15 +21,43 @@
     return s - 6;
   }
 
-  function nextGeneration(pop, fitness, rng, opts) {
+  // Indices des élites, du meilleur au moins bon (égalité : plus petit indice d'abord).
+  // nextGeneration place ces élites, dans cet ordre, en tête de la nouvelle population.
+  function eliteIndices(fitness, opts) {
     const o = opt(opts);
-    const n = pop.length;
+    const n = fitness.length;
     const order = [];
     for (let i = 0; i < n; i++) order.push(i);
     order.sort((a, b) => (fitness[b] - fitness[a]) || (a - b));
-    const nElite = Math.min(n, Math.ceil(o.eliteFrac * n));
+    return order.slice(0, Math.min(n, Math.ceil(o.eliteFrac * n)));
+  }
+
+  // Indices du top rescueFrac (au moins 1 bot si rescueFrac > 0), du meilleur au moins bon.
+  function rescueIndices(fitness, opts) {
+    const o = opt(opts);
+    const n = fitness.length;
+    if (!(o.rescueFrac > 0) || !(o.rescueGames > 0) || n === 0) return [];
+    const order = [];
+    for (let i = 0; i < n; i++) order.push(i);
+    order.sort((a, b) => (fitness[b] - fitness[a]) || (a - b));
+    return order.slice(0, Math.min(n, Math.max(1, Math.ceil(o.rescueFrac * n))));
+  }
+
+  // Ajoute des parties à un compteur {sum, count} en bornant la mémoire à memoryGames parties
+  // (au-delà, l'ancien total est réduit proportionnellement : les vieilles parties pèsent moins).
+  function addToRecord(rec, games, opts) {
+    const o = opt(opts);
+    let sum = rec ? rec.sum : 0, count = rec ? rec.count : 0;
+    for (const g of games) { sum += g.score; count++; }
+    if (o.memoryGames > 0 && count > o.memoryGames) { sum = sum * o.memoryGames / count; count = o.memoryGames; }
+    return { sum, count };
+  }
+
+  function nextGeneration(pop, fitness, rng, opts) {
+    const o = opt(opts);
+    const n = pop.length;
     const next = [];
-    for (let i = 0; i < nElite; i++) next.push(new Float32Array(pop[order[i]]));
+    for (const i of eliteIndices(fitness, opts)) next.push(new Float32Array(pop[i]));
 
     function pick() {
       let best = -1;
@@ -73,6 +105,6 @@
     return { spdMax, raised: false };
   }
 
-  const DodgeEvo = { DEFAULTS, gaussian, nextGeneration, introduceSpdMax, updateSpdMax };
+  const DodgeEvo = { DEFAULTS, gaussian, nextGeneration, eliteIndices, rescueIndices, addToRecord, introduceSpdMax, updateSpdMax };
   if (typeof module !== 'undefined' && module.exports) module.exports = DodgeEvo; else root.DodgeEvo = DodgeEvo;
 })(typeof self !== 'undefined' ? self : globalThis);
