@@ -6,7 +6,22 @@
 
   function poolSize(hc) { return Math.max(1, (hc || 2) - 1); }
 
-  function copyNotable(n) { return Object.assign({}, n, { weights: new Float32Array(n.weights), cfg: Object.assign({}, n.cfg) }); }
+  // Les notables sont immuables une fois créés : on partage les objets (pas de copie profonde à chaque sauvegarde).
+  function copyNotableState(ns) {
+    return ns ? Object.assign({}, ns, { milestonesDone: ns.milestonesDone.slice() }) : null;
+  }
+  function checkState(s) {
+    const bad = (what) => { throw new Error('sauvegarde invalide : ' + what); };
+    if (!s || typeof s !== 'object') bad('état manquant');
+    if (!Array.isArray(s.population) || !s.population.length) bad('population manquante');
+    if (!Array.isArray(s.history)) bad('historique manquant');
+    if (!Array.isArray(s.notables)) bad('perfs notables manquantes');
+    for (const n of s.notables) if (!n || !(n.weights instanceof Float32Array) || typeof n.type !== 'string') bad('perf notable illisible');
+    if (s.notableState !== null && s.notableState !== undefined) {
+      if (typeof s.notableState !== 'object' || !Array.isArray(s.notableState.milestonesDone)) bad('notableState.milestonesDone manquant');
+    }
+    if (typeof s.gen !== 'number') bad('génération manquante');
+  }
 
   function createTrainer(conf) {
     const evaluate = conf.evaluate;
@@ -51,7 +66,7 @@
 
       const det = Notables.detect({ gen, population, results, cfg, spdMaxBefore, spdMaxAfter, humanRecord: opts.humanRecord }, notableState);
       notableState = det.state;
-      for (const n of det.notables) { notables.push(n); onNotable(n); }
+      for (const n of det.notables) { Notables.addNotable(notables, n); onNotable(n); }
 
       const sorted = fitness.slice().sort((a, b) => a - b);
       const n = sorted.length;
@@ -101,21 +116,24 @@
     }
     async function reset() { await settle(); resetSync(); }
 
+    // Population, historique et état des notables sont copiés ; les notables (immuables) sont partagés.
     function getState() {
       return {
         gen, population: population.map(w => new Float32Array(w)), rngState: rng.getState(), spdMax,
-        history: history.map(h => Object.assign({}, h)), notables: notables.map(copyNotable),
-        notableState: notableState ? Object.assign({}, notableState, { milestonesDone: notableState.milestonesDone.slice() }) : null,
+        history: history.map(h => Object.assign({}, h)), notables: notables.slice(),
+        notableState: copyNotableState(notableState),
         opts: Object.assign({}, opts), cfg: Object.assign({}, cfg)
       };
     }
+    // Valide tout avant de toucher à l'état : en cas d'erreur, le trainer reste tel quel.
     async function loadState(s) {
+      checkState(s);
       await settle();
       gen = s.gen; spdMax = s.spdMax; rng.setState(s.rngState);
       population = s.population.map(w => new Float32Array(w));
       history = s.history.map(h => Object.assign({}, h));
-      notables = s.notables.map(copyNotable);
-      notableState = s.notableState ? Object.assign({}, s.notableState, { milestonesDone: s.notableState.milestonesDone.slice() }) : null;
+      notables = Notables.thin(s.notables);
+      notableState = copyNotableState(s.notableState);
     }
 
     // Réglages modifiables en cours de route (lus à chaque génération) ; les autres demandent une réinitialisation.
@@ -128,14 +146,17 @@
   }
 
   // Pool de workers : découpe en `size` lots contigus, un ArrayBuffer transféré par lot.
-  function createWorkerPool(workerUrl, size, WorkerCtor) {
+  // Un lot sans réponse au bout de timeoutMs (60 s par défaut) fait échouer le job avec une erreur.
+  const JOB_TIMEOUT_MS = 60000;
+  function createWorkerPool(workerUrl, size, WorkerCtor, poolOpts) {
     const W = WorkerCtor || Worker;
+    const timeoutMs = (poolOpts && poolOpts.timeoutMs) || JOB_TIMEOUT_MS;
     const workers = [];
     const jobs = new Map(); // jobId -> {pending, parts, resolve, reject}
     let nextJob = 1;
 
     function failAll(err) {
-      for (const [id, job] of jobs) { jobs.delete(id); job.reject(err); }
+      for (const [id, job] of jobs) { jobs.delete(id); clearTimeout(job.timer); job.reject(err); }
     }
     for (let i = 0; i < size; i++) {
       const w = new W(workerUrl);
@@ -147,6 +168,7 @@
         job.parts[m.part] = m.results;
         if (--job.pending === 0) {
           jobs.delete(m.jobId);
+          clearTimeout(job.timer);
           job.resolve([].concat.apply([], job.parts));
         }
       };
@@ -163,7 +185,12 @@
         const per = Math.ceil(n / chunks);
         const sends = [];
         for (let c = 0; c * per < n; c++) sends.push([c * per, Math.min(n, (c + 1) * per)]);
-        jobs.set(jobId, { pending: sends.length, parts: new Array(sends.length), resolve, reject });
+        const timer = setTimeout(() => {
+          if (!jobs.has(jobId)) return;
+          jobs.delete(jobId);
+          reject(new Error('un worker ne répond plus (aucune réponse en ' + Math.round(timeoutMs / 1000) + ' s)'));
+        }, timeoutMs);
+        jobs.set(jobId, { pending: sends.length, parts: new Array(sends.length), resolve, reject, timer });
         sends.forEach(([a, b], part) => {
           const len = brains[a].length;
           const buf = new Float32Array((b - a) * len);
@@ -180,6 +207,6 @@
     return { evaluate, terminate };
   }
 
-  const DodgeTrainer = { poolSize, createTrainer, createWorkerPool };
+  const DodgeTrainer = { poolSize, createTrainer, createWorkerPool, JOB_TIMEOUT_MS };
   if (typeof module !== 'undefined' && module.exports) module.exports = DodgeTrainer; else root.DodgeTrainer = DodgeTrainer;
 })(typeof self !== 'undefined' ? self : globalThis);

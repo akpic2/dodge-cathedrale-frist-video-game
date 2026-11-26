@@ -1,5 +1,8 @@
 (function (root) {
-  const VERSION = 1;
+  const Sim = (typeof DodgeSim !== 'undefined') ? DodgeSim : require('../sim.js');
+  // v2 : pas fixe 1/60 (refonte Mote). Une sauvegarde d'un autre pas ne rejoue pas les mêmes parties.
+  const VERSION = 2;
+  const INCOMPATIBLE_MSG = 'Sauvegarde d\'une ancienne version du jeu — incompatible';
   const DB_NAME = 'dodge-ia', STORE = 'runs', KEY = 'current';
 
   function bytesToB64(bytes) {
@@ -55,11 +58,17 @@
     return v;
   }
 
-  function serialize(state) { return { version: VERSION, state: enc(state) }; }
+  function serialize(state) { return { version: VERSION, dt: Sim.DT, state: enc(state) }; }
+
+  function incompatible() {
+    const e = new Error(INCOMPATIBLE_MSG);
+    e.code = 'incompatible';
+    return e;
+  }
 
   function deserialize(obj) {
     if (!obj || typeof obj !== 'object') throw new Error('sauvegarde invalide : format inattendu');
-    if (obj.version !== VERSION) throw new Error('version de sauvegarde non supportée : ' + obj.version);
+    if (obj.version !== VERSION || obj.dt !== Sim.DT) throw incompatible();
     const s = obj.state;
     if (!s || typeof s !== 'object' || !Array.isArray(s.population) || !Array.isArray(s.history) ||
         !Array.isArray(s.notables) || s.gen === undefined || s.rngState === undefined) {
@@ -129,6 +138,6 @@
     });
   }
 
-  const DodgeStorage = { serialize, deserialize, saveToIDB, loadFromIDB, exportFile, importFile };
+  const DodgeStorage = { VERSION, INCOMPATIBLE_MSG, serialize, deserialize, saveToIDB, loadFromIDB, exportFile, importFile };
   if (typeof module !== 'undefined' && module.exports) module.exports = DodgeStorage; else root.DodgeStorage = DodgeStorage;
 })(typeof self !== 'undefined' ? self : globalThis);

@@ -111,6 +111,93 @@
     return { notables, state: st };
   }
 
-  const DodgeNotables = { MILESTONES, PRIORITY, detect, fmt, initialState };
+  // ===== Éclaircissement de la liste stockée =====
+  // Champions : tous jusqu'à la gén. 20, puis 1 sur 10 jusqu'à 200, 1 sur 100 jusqu'à 2000, puis 1 sur 1000.
+  // Le champion de la dernière génération est toujours gardé (il remplace l'ancien « dernier » hors grille).
+  // Les autres types sont tous gardés, sauf sideDodges : seulement les SIDE_DODGES_KEEP plus récents.
+  const SIDE_DODGES_KEEP = 20;
+  function championKept(gen) {
+    if (gen <= 20) return true;
+    if (gen <= 200) return gen % 10 === 0;
+    if (gen <= 2000) return gen % 100 === 0;
+    return gen % 1000 === 0;
+  }
+
+  // Ajoute n à list (en place) puis retire ce qui sort de la règle. Renvoie list.
+  function addNotable(list, n) {
+    list.push(n);
+    if (n.type === 'champion') {
+      for (let i = list.length - 2; i >= 0; i--) {
+        const p = list[i];
+        if (p.type !== 'champion') continue;
+        if (p.gen < n.gen && !championKept(p.gen)) list.splice(i, 1);
+        break; // un seul champion hors grille possible : le précédent « dernier »
+      }
+    } else if (n.type === 'sideDodges') {
+      let count = 0;
+      for (const p of list) if (p.type === 'sideDodges') count++;
+      for (let i = 0; i < list.length && count > SIDE_DODGES_KEEP; i++) {
+        if (list[i].type === 'sideDodges') { list.splice(i, 1); i--; count--; }
+      }
+    }
+    return list;
+  }
+
+  // Applique la règle à une liste complète (ex. sauvegarde chargée). Nouveau tableau, mêmes objets.
+  function thin(list) {
+    let lastChamp = -Infinity, sideTotal = 0;
+    for (const n of list) {
+      if (n.type === 'champion' && n.gen > lastChamp) lastChamp = n.gen;
+      if (n.type === 'sideDodges') sideTotal++;
+    }
+    let sideSkip = sideTotal - SIDE_DODGES_KEEP;
+    const out = [];
+    for (const n of list) {
+      if (n.type === 'champion' && !championKept(n.gen) && n.gen !== lastChamp) continue;
+      if (n.type === 'sideDodges' && sideSkip > 0) { sideSkip--; continue; }
+      out.push(n);
+    }
+    return out;
+  }
+
+  // ===== File d'auto-sélection (logique pure, utilisée par le tableau de bord) =====
+  // Élément : {n, parts: [{type, label, priority}], priority, seq}. Plusieurs perfs d'une même partie
+  // (record + gros bond + palier) fusionnent en un seul replay.
+  const QUEUE_MAX = 5;
+  const QUEUE_REPLACING = ['record', 'bigJump', 'milestone', 'spdMaxUp', 'humanBeaten'];
+  function sameGame(a, b) { return a.gen === b.gen && a.seed === b.seed && a.score === b.score; }
+  function queueable(n) { return n.priority > 0 && n.type !== 'sideDodges'; }
+  function refreshItem(q) {
+    q.priority = 0;
+    for (const p of q.parts) q.priority = Math.max(q.priority, p.priority);
+  }
+  // Renvoie la nouvelle file (l'ancienne n'est pas modifiée ; les éléments gardés peuvent l'être).
+  function queueAdd(queue, n, seq, max) {
+    if (!queueable(n)) return queue;
+    let out = queue.slice();
+    // un nouveau record (etc.) remplace l'élément du même type encore en attente
+    if (QUEUE_REPLACING.indexOf(n.type) >= 0) {
+      for (const q of out) {
+        if (sameGame(q.n, n)) continue;
+        q.parts = q.parts.filter(p => p.type !== n.type);
+        refreshItem(q);
+      }
+      out = out.filter(q => q.parts.length);
+    }
+    const part = { type: n.type, label: n.label, priority: n.priority };
+    const dup = out.find(q => sameGame(q.n, n));
+    if (dup) { dup.parts.push(part); refreshItem(dup); dup.seq = seq; }
+    else out.push({ n, parts: [part], priority: n.priority, seq });
+    // priorité décroissante, puis la plus récente d'abord
+    out.sort((a, b) => (b.priority - a.priority) || (b.seq - a.seq));
+    const cap = max || QUEUE_MAX;
+    while (out.length > cap) out.pop(); // la plus ancienne parmi les moins prioritaires
+    return out;
+  }
+
+  const DodgeNotables = {
+    MILESTONES, PRIORITY, SIDE_DODGES_KEEP, QUEUE_MAX, QUEUE_REPLACING,
+    detect, fmt, initialState, championKept, addNotable, thin, queueAdd,
+  };
   if (typeof module !== 'undefined' && module.exports) module.exports = DodgeNotables; else root.DodgeNotables = DodgeNotables;
 })(typeof self !== 'undefined' ? self : globalThis);

@@ -14,16 +14,17 @@
     record: 'Record', bigJump: 'Gros bond', milestone: 'Palier', spdMaxUp: 'Limite',
     sideDodges: 'Esquives', humanBeaten: 'Humain battu', champion: 'Champion',
   };
-  const QUEUE_MAX = 20, SAMPLE = 30, LIVE_SPEED = 4, AUTOSAVE_EVERY = 10, END_HOLD_MS = 2500;
+  const SAMPLE = 30, LIVE_SPEED = 4, AUTOSAVE_MS = 60000, END_HOLD_MS = 2500;
   const params = new URLSearchParams(location.search);
 
   // ===== État =====
   let pool = null, trainer = null;
   let run = null;           // {seed, opts, cfg, charId}
   let phase = 'idle';       // idle | running | paused | busy
-  let history = [], notables = [], byId = new Map(), lastSummary = null;
+  let history = [], notables = [], lastSummary = null; // notables : mêmes objets et même éclaircissement que le trainer
   let elapsedMs = 0, runStartedAt = 0, rateWin = [];
-  let queue = [], mode = 'live', current = null, endTimer = 0, playToken = 0;
+  let queue = [], queueSeq = 0, mode = 'live', current = null, endTimer = 0, playToken = 0;
+  let importing = false, saving = false;
 
   const live = DodgeReplay.createLive($('liveCanvas'));
   const replay = DodgeReplay.create($('replayCanvas'));
@@ -87,14 +88,21 @@
   ['setHuman', 'setHold', 'setRaise'].forEach(id => $(id).addEventListener('change', liveOptsChanged));
 
   // ===== Entraîneur =====
-  function makeTrainer(r) {
-    run = { seed: r.seed, opts: Object.assign({}, r.opts), cfg: Object.assign({}, r.cfg), charId: r.charId };
-    trainer = DodgeTrainer.createTrainer({
-      evaluate: pool.evaluate, seed: run.seed, opts: run.opts, cfg: run.cfg,
-      onGeneration, onNotable, onError,
+  // Construit un trainer sans toucher à l'état global ; ses rappels ne font rien tant qu'il n'est pas installé.
+  function buildTrainer(r) {
+    const b = { run: { seed: r.seed, opts: Object.assign({}, r.opts), cfg: Object.assign({}, r.cfg), charId: r.charId }, t: null };
+    const guard = f => x => { if (b.t && trainer === b.t) f(x); };
+    b.t = DodgeTrainer.createTrainer({
+      evaluate: pool.evaluate, seed: b.run.seed, opts: b.run.opts, cfg: b.run.cfg,
+      onGeneration: guard(onGeneration), onNotable: guard(onNotable), onError: guard(onError),
     });
+    return b;
+  }
+  function install(b) {
+    trainer = b.t; run = b.run;
     live.setCharId(run.charId);
   }
+  function makeTrainer(r) { install(buildTrainer(r)); }
 
   function fullState() {
     const s = trainer.getState();
@@ -102,10 +110,15 @@
     return s;
   }
   function save(why) {
+    if (saving) return Promise.resolve();
+    saving = true;
     return DodgeStorage.saveToIDB(fullState())
       .then(() => { if (why) status(why + ' (gén. ' + history.length + ')'); })
-      .catch(e => showError('Sauvegarde automatique impossible : ' + e.message));
+      .catch(e => showError('Sauvegarde automatique impossible : ' + e.message))
+      .then(() => { saving = false; });
   }
+  // Sauvegarde auto toutes les 60 s pendant l'entraînement (et à chaque pause, voir onMain).
+  setInterval(() => { if (phase === 'running' && !importing) save('Sauvegarde auto'); }, AUTOSAVE_MS);
 
   function onGeneration(summary) {
     summary.cfg = run.cfg;
@@ -117,12 +130,11 @@
     if (mode === 'live' && $('liveToggle').checked) { live.show(summary, SAMPLE, LIVE_SPEED); $('stageLabel').textContent = liveLabel(); }
     updateStats();
     scheduleChart();
-    if ((summary.gen + 1) % AUTOSAVE_EVERY === 0) save('Sauvegarde auto');
   }
 
   function onNotable(n) {
-    notables.push(n); byId.set(n.id, n);
-    if (n.priority > 0 && $('autoToggle').checked) enqueue(n);
+    DodgeNotables.addNotable(notables, n);
+    if ($('autoToggle').checked) enqueue(n);
     scheduleList();
     maybePlayNext();
   }
@@ -141,7 +153,7 @@
   function updateButtons() {
     const b = $('btnMain');
     b.textContent = phase === 'running' ? 'Pause' : (phase === 'paused' ? 'Reprendre' : 'Démarrer');
-    const busy = phase === 'busy' || !pool;
+    const busy = phase === 'busy' || importing || !pool;
     b.disabled = busy; $('btnReset').disabled = busy; $('btnExport').disabled = busy; $('btnImport').disabled = busy;
   }
 
@@ -174,7 +186,7 @@
   }
 
   function clearRun() {
-    history = []; notables = []; byId = new Map(); lastSummary = null; queue = [];
+    history = []; notables = []; lastSummary = null; queue = []; updateQueueBadge();
     elapsedMs = 0; runStartedAt = 0; rateWin = [];
     live.clear();
     backToLive();
@@ -182,14 +194,17 @@
   }
 
   // Charge un entraînement sauvegardé (IndexedDB ou fichier). Ne relance pas l'entraînement.
+  // Le nouveau trainer est construit et chargé à part : si ça échoue, l'ancien (et son état) reste intact.
   async function adopt(s) {
-    if (trainer) await trainer.pause();
     const ch = s.charId ? charById(s.charId) : (CHARS.find(c => c.speed === (s.cfg && s.cfg.charSpeed)) || CHARS[0]);
-    makeTrainer({ seed: s.seed !== undefined ? s.seed : 1, opts: s.opts || {}, cfg: s.cfg || {}, charId: ch.id });
-    await trainer.loadState(s);
+    const b = buildTrainer({ seed: s.seed !== undefined ? s.seed : 1, opts: s.opts || {}, cfg: s.cfg || {}, charId: ch.id });
+    await b.t.loadState(s); // lève une erreur si la sauvegarde est invalide
+    // succès : on arrête l'ancien (génération en cours terminée) avant de basculer
+    if (trainer) await trainer.pause();
+    stopClock();
+    install(b);
     clearRun();
-    history = s.history; notables = s.notables.slice();
-    for (const n of notables) byId.set(n.id, n);
+    history = s.history; notables = DodgeNotables.thin(s.notables);
     elapsedMs = s.elapsedMs || 0;
     writeSettings(run);
     phase = s.gen > 0 ? 'paused' : 'idle';
@@ -208,23 +223,25 @@
     updateButtons();
   }
 
+  // Pendant l'import, l'entraînement en cours continue ; il n'est remplacé qu'une fois la sauvegarde chargée.
   async function onImportFile(file) {
-    if (!file) return;
-    const prev = phase;
-    phase = 'busy'; updateButtons();
+    if (!file || importing) return;
+    importing = true; updateButtons();
+    let ok = false, s = null;
     try {
-      const s = await DodgeStorage.importFile(file);
-      stopClock();
+      s = await DodgeStorage.importFile(file);
       await adopt(s);
-      save();
-      status('Import réussi : génération ' + s.gen + '. Clique sur Reprendre pour continuer.');
+      ok = true;
     } catch (e) {
       showError('Import impossible : ' + e.message);
-      phase = prev === 'busy' ? 'paused' : prev;
-      if (phase === 'running') trainer.start();
-      updateButtons();
     }
+    importing = false;
     $('importFile').value = '';
+    updateButtons();
+    if (ok) {
+      save();
+      status('Import réussi : génération ' + s.gen + '. Clique sur Reprendre pour continuer.');
+    }
   }
 
   $('btnMain').addEventListener('click', onMain);
@@ -331,23 +348,14 @@
   $('notableList').addEventListener('click', e => {
     const b = e.target.closest('button[data-act]');
     if (!b) return;
-    const n = byId.get(b.dataset.id);
+    const n = notables.find(x => x.id === b.dataset.id) || (current && current.n.id === b.dataset.id ? current.n : null);
     if (n) playNotable(n, b.dataset.act, false);
   });
 
   // ===== File d'auto-sélection =====
-  function sameGame(a, b) { return a.gen === b.gen && a.seed === b.seed && a.score === b.score; }
+  // Règles (remplacement par type, plus récent d'abord, 5 max, pas d'esquives) : DodgeNotables.queueAdd.
   function enqueue(n) {
-    // une même partie peut être record + gros bond + palier : on fusionne en un seul replay
-    const dup = queue.find(q => sameGame(q.n, n));
-    if (dup) {
-      dup.labels.push(n.label);
-      dup.priority = Math.max(dup.priority, n.priority);
-    } else {
-      queue.push({ n, labels: [n.label], priority: n.priority, at: n.gen });
-    }
-    queue.sort((a, b) => (b.priority - a.priority) || (a.at - b.at));
-    while (queue.length > QUEUE_MAX) queue.pop(); // la moins prioritaire (et la plus récente à égalité)
+    queue = DodgeNotables.queueAdd(queue, n, ++queueSeq);
     updateQueueBadge();
   }
   function updateQueueBadge() { $('queueBadge').textContent = queue.length + ' en file'; }
@@ -355,7 +363,7 @@
     if (mode !== 'live' || !queue.length || !$('autoToggle').checked) return;
     const q = queue.shift();
     updateQueueBadge();
-    playNotable(q.n, 'play', true, q.labels.join(' · '));
+    playNotable(q.n, 'play', true, q.parts.map(p => p.label).join(' · '));
   }
   $('autoToggle').addEventListener('change', e => {
     if (!e.target.checked) { queue = []; updateQueueBadge(); } else maybePlayNext();
@@ -487,17 +495,23 @@
     clearRun();
     let saved = null;
     try { saved = await DodgeStorage.loadFromIDB(); }
-    catch (e) { if (!/indisponible/.test(e.message)) showError('Lecture de la sauvegarde impossible : ' + e.message); }
+    catch (e) {
+      if (e.code === 'incompatible') info(e.message + '. Elle est ignorée : nouvel entraînement.');
+      else if (!/indisponible/.test(e.message)) showError('Lecture de la sauvegarde impossible : ' + e.message);
+    }
+    let loaded = false;
     if (saved && !params.has('fresh')) {
       try {
         await adopt(saved);
+        loaded = true;
         if (saved.gen > 0) info('Entraînement repris à la génération ' + saved.gen + ' (sauvegarde auto). Clique sur Reprendre pour continuer.');
         status('Sauvegarde chargée.');
       } catch (e) {
+        // adopt n'a rien remplacé : le trainer neuf créé plus haut reste en place
         showError('Sauvegarde illisible, nouvel entraînement : ' + e.message);
-        makeTrainer(r); clearRun();
       }
-    } else {
+    }
+    if (!loaded) {
       status('Prêt (population ' + run.opts.popSize + ', ' + run.opts.gamesPerBot + ' parties par bot).');
     }
     phase = phase === 'busy' ? 'idle' : phase;

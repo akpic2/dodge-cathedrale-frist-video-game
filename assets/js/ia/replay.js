@@ -284,7 +284,13 @@
       show(summary, sampleSize, sp, o) {
         if (o && o.charId) charId = o.charId;
         if (sp) speed = sp;
-        if (!summary) { active = true; if (!raf) { last = performance.now(); raf = requestAnimationFrame(tick); } return; }
+        if (!summary) {
+          active = true;
+          // rien à animer : on dessine l'écran d'attente une fois, sans boucle rAF
+          if (!sims.length && !pending) { draw(); return; }
+          if (!raf) { last = performance.now(); raf = requestAnimationFrame(tick); }
+          return;
+        }
         if (!sims.length) begin(summary, sampleSize || 30); else pending = summary;
         if (info) info.sampleSize = sampleSize || 30;
         active = true;

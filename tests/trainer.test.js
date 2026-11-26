@@ -151,3 +151,44 @@ test('loadState et reset en pleine génération attendent la fin', async () => {
   assert.equal(t.getState().gen, 0);
   assert.equal(t.getState().history.length, 0);
 });
+
+test('getState partage les notables (immuables) mais copie la population', async () => {
+  const t = mk();
+  await t.runGenerations(2);
+  const a = t.getState(), b = t.getState();
+  assert.ok(a.notables.length > 0);
+  assert.strictEqual(a.notables[0], b.notables[0]);
+  assert.notStrictEqual(a.notables, b.notables);
+  assert.notStrictEqual(a.population[0], b.population[0]);
+  a.population[0][0] = 12345;
+  assert.notEqual(t.getState().population[0][0], 12345);
+});
+
+test('loadState invalide : rejet en français, trainer intact', async () => {
+  const t = mk();
+  await t.runGenerations(2);
+  const before = JSON.stringify(t.getState().history);
+  const bad = t.getState();
+  bad.notableState = { bestScore: 1 }; // milestonesDone manquant
+  const other = mk();
+  await other.runGenerations(1);
+  await assert.rejects(other.loadState(bad), /sauvegarde invalide : notableState\.milestonesDone manquant/);
+  assert.equal(other.getState().gen, 1);
+  assert.equal(JSON.stringify(t.getState().history), before);
+});
+
+test('trainer : champions éclaircis au fil des générations', async () => {
+  const t = mk({ opts: { popSize: 6, gamesPerBot: 1 } });
+  await t.runGenerations(25);
+  const champs = t.getState().notables.filter(n => n.type === 'champion').map(n => n.gen);
+  assert.deepStrictEqual(champs, Array.from({ length: 21 }, (_, i) => i).concat([24]));
+});
+
+test('pool : un worker muet fait échouer le job (délai dépassé, en français)', async () => {
+  class Mute { postMessage() {} terminate() {} }
+  const pool = T.createWorkerPool('x', 2, Mute, { timeoutMs: 30 });
+  const rng = Sim.makeRng(1);
+  await assert.rejects(pool.evaluate([Brain.random(rng), Brain.random(rng)], [1], {}), /ne répond plus/);
+  assert.equal(T.JOB_TIMEOUT_MS, 60000);
+  pool.terminate();
+});

@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const S = require('../assets/js/ia/storage.js');
 const T = require('../assets/js/ia/trainer.js');
 const Eval = require('../assets/js/ia/evaluate.js');
+const Sim = require('../assets/js/sim.js');
 
 const evaluate = async (b, s, c) => Eval.evaluateBatch(b, s, c);
 const rt = (st) => S.deserialize(JSON.parse(JSON.stringify(S.serialize(st))));
@@ -37,10 +38,29 @@ test('serialize ne mute pas son entrée', () => {
   assert.equal(JSON.stringify(S.serialize(st)), snap);
 });
 
-test('version inconnue et forme invalide rejetées en français', () => {
-  assert.throws(() => S.deserialize({ version: 99, state: {} }), /version/);
+test('version 2 et pas de temps enregistrés', () => {
+  const out = S.serialize({ gen: 0, population: [], rngState: 1, spdMax: 1, history: [], notables: [], notableState: null });
+  assert.equal(out.version, 2);
+  assert.equal(out.dt, Sim.DT);
+  assert.equal(Sim.DT, 1 / 60);
+});
+
+test('ancienne version ou autre pas de temps : incompatible, en français', () => {
+  const st = { gen: 1, population: [new Float32Array(2)], rngState: 1, spdMax: 1, history: [], notables: [], notableState: null };
+  const ok = JSON.parse(JSON.stringify(S.serialize(st)));
+  const msg = /Sauvegarde d'une ancienne version du jeu — incompatible/;
+  assert.throws(() => S.deserialize(Object.assign({}, ok, { version: 1 })), msg);
+  assert.throws(() => S.deserialize(Object.assign({}, ok, { version: 99 })), msg);
+  assert.throws(() => S.deserialize(Object.assign({}, ok, { dt: 1 / 144 })), msg);
+  const noDt = Object.assign({}, ok); delete noDt.dt;
+  assert.throws(() => S.deserialize(noDt), msg);
+  try { S.deserialize(Object.assign({}, ok, { version: 1 })); } catch (e) { assert.equal(e.code, 'incompatible'); }
+  assert.ok(S.deserialize(ok).population[0] instanceof Float32Array);
+});
+
+test('forme invalide rejetée en français', () => {
   assert.throws(() => S.deserialize(null), /invalide/);
-  assert.throws(() => S.deserialize({ version: 1, state: { gen: 1 } }), /invalide/);
+  assert.throws(() => S.deserialize({ version: 2, dt: Sim.DT, state: { gen: 1 } }), /invalide/);
 });
 
 test('replay après rechargement : mêmes scores', async () => {
