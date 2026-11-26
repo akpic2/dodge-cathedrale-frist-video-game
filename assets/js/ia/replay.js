@@ -130,7 +130,9 @@
   function create(canvas) {
     const ctx = setupCtx(canvas);
     let spec = null, sim = null, speed = 1, playing = false, brainOn = false, ended = false;
-    let raf = 0, last = 0, acc = 0, charId = 'HommeBleu', title = '';
+    let raf = 0, last = 0, lastDraw = 0, acc = 0, charId = 'HommeBleu', title = '';
+    const MAX_STEPS_PER_FRAME = 16;
+    const DRAW_INTERVAL = 1000 / 30;
     const endCbs = [], frameCbs = [];
     const inputs = new Float64Array(Sensors.N_INPUTS);
 
@@ -154,9 +156,13 @@
       const dt = Math.min((now - last) / 1000, 0.1);
       last = now;
       acc += dt * speed;
-      while (acc >= DT && !finished()) {
+      // Garde-fou : un onglet ralenti ne doit pas monopoliser le thread principal
+      // en essayant de rattraper des dizaines de pas d'un coup.
+      let steps = 0;
+      while (acc >= DT && !finished() && steps < MAX_STEPS_PER_FRAME) {
         acc -= DT;
         Sim.step(sim, Brain.decide(spec.weights, Sensors.observe(sim, inputs)));
+        steps++;
       }
       if (finished() && !ended) {
         ended = true; playing = false;
@@ -165,7 +171,11 @@
         for (const cb of endCbs) cb(res);
         return;
       }
-      draw();
+      // 30 dessins/s suffisent pour un replay lisible ; la simulation continue à son rythme.
+      if (now - lastDraw >= DRAW_INTERVAL) {
+        draw();
+        lastDraw = now;
+      }
       raf = requestAnimationFrame(tick);
     }
 
