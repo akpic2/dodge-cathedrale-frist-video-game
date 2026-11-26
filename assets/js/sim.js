@@ -92,7 +92,6 @@
     const p = sim.player, cfg = sim.cfg;
 
     sim.time += DT;
-    sim.score = Math.floor(sim.time * 20);
 
     sim.progressTimer += DT;
     while (sim.progressTimer >= PROGRESSION_INTERVAL) {
@@ -100,6 +99,11 @@
       sim.spd = Math.min(sim.spd + 25, cfg.spdMax);
       sim.spawnInt = Math.max(25, sim.spawnInt - 8);
     }
+
+    // Score : fige des que la limite de vitesse est atteinte (les stats restent comparables).
+    // survival : temps de survie complet x 20, sert a la selection.
+    sim.survival = Math.floor(sim.time * 20);
+    if (sim.spd < cfg.spdMax) sim.score = sim.survival;
 
     sim.spawnTimer += DT;
     const spawnIntervalSeconds = sim.spawnInt / REFERENCE_FPS;
@@ -141,6 +145,12 @@
     return n;
   }
 
-  const DodgeSim = { W, H, DT, DIFFICULTIES, DEFAULT_SPD_MAX, makeRng, createSim, step, advanceRealTime, collides };
+  // Vitesse atteinte apres `time` secondes sans limite (meme progression que step()).
+  function speedAt(time, difficulty) {
+    const diff = DIFFICULTIES[difficulty || 'normal'] || DIFFICULTIES.normal;
+    return diff.spd + 25 * Math.floor(time / PROGRESSION_INTERVAL);
+  }
+
+  const DodgeSim = { W, H, DT, DIFFICULTIES, DEFAULT_SPD_MAX, makeRng, createSim, step, advanceRealTime, collides, speedAt };
   if (typeof module !== 'undefined' && module.exports) module.exports = DodgeSim; else root.DodgeSim = DodgeSim;
 })(typeof self !== 'undefined' ? self : globalThis);

@@ -15,7 +15,7 @@
       Sim.step(sim, Brain.decide(w, Sensors.observe(sim, inputs)));
     }
     return {
-      seed, score: sim.score, time: sim.time,
+      seed, score: sim.score, survival: Math.floor(sim.time * 20), time: sim.time,
       sideDodged: sim.stats.sideDodged, timeAtCap: sim.stats.timeAtCap,
       timedOut: !sim.dead, spdAtEnd: sim.spd
     };
@@ -23,9 +23,11 @@
 
   function evaluateBrain(w, seeds, cfg) {
     const games = seeds.map(s => playGame(w, s, cfg));
-    let sum = 0;
-    for (const g of games) sum += g.score;
-    return { fitness: games.length ? sum / games.length : 0, games };
+    let sum = 0, surv = 0;
+    for (const g of games) { sum += g.score; surv += g.survival; }
+    const n = games.length;
+    // fitness = score affiche (fige a la limite) ; survival = temps complet, pour la selection.
+    return { fitness: n ? sum / n : 0, survival: n ? surv / n : 0, games };
   }
 
   function evaluateBatch(brains, seeds, cfg) {

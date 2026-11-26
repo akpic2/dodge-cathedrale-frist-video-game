@@ -9,6 +9,9 @@
     // speciesMinSize bots est protégé, et la sélection divise le score par la taille de la famille.
     targetSpecies: 8, speciesMinSize: 5, maxEliteFrac: 0.2,
     gamesPerBot: 15, holdSeconds: 20, raise: 1.05, introSeconds: 40,
+    // Limite de vitesse des le depart : la vitesse atteinte a ce score (0 = pas de limite au depart,
+    // on retombe alors sur introSeconds).
+    startScore: 700,
     // Repêchage : le top rescueFrac rejoue rescueGames parties de plus avant la sélection.
     rescueFrac: 0.2, rescueGames: 20,
     // Mémoire des survivants : on garde au plus memoryGames parties dans la moyenne cumulée.
@@ -99,7 +102,8 @@
   function addToRecord(rec, games, opts) {
     const o = opt(opts);
     let sum = rec ? rec.sum : 0, count = rec ? rec.count : 0;
-    for (const g of games) { sum += g.score; count++; }
+    // Selection sur la survie complete (le score s'arrete a la limite de vitesse).
+    for (const g of games) { sum += (g.survival !== undefined ? g.survival : g.score); count++; }
     if (o.memoryGames > 0 && count > o.memoryGames) { sum = sum * o.memoryGames / count; count = o.memoryGames; }
     return { sum, count };
   }

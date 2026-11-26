@@ -51,9 +51,15 @@
     const onError = conf.onError || function () {};
     let running = false, loopPromise = null, busy = false, inflight = null, loopToken = 0;
 
+    // Limite de depart = vitesse atteinte au score startScore (score = temps x 20).
+    function initialSpdMax() {
+      const s = opts.startScore !== undefined ? opts.startScore : Evo.DEFAULTS.startScore;
+      return s > 0 ? Sim.speedAt(s / 20, cfg.difficulty) : Infinity;
+    }
+
     function resetSync() {
       rng.setState(seed);
-      gen = 0; spdMax = Infinity; history = []; notables = []; notableState = null;
+      gen = 0; spdMax = initialSpdMax(); history = []; notables = []; notableState = null;
       population = [];
       for (let i = 0; i < popSize; i++) population.push(Brain.random(rng));
       records = population.map(() => null);
@@ -71,7 +77,8 @@
       const rawFitness = results.map(r => r.fitness);
 
       // Repêchage : le top rejoue des parties en plus, sur de nouvelles graines communes.
-      const rescued = Evo.rescueIndices(rawFitness, opts);
+      // (sur la survie complete : au-dela de la limite, le score affiche est fige)
+      const rescued = Evo.rescueIndices(results.map(r => r.survival !== undefined ? r.survival : r.fitness), opts);
       const rescueGames = opts.rescueGames !== undefined ? opts.rescueGames : Evo.DEFAULTS.rescueGames;
       if (rescued.length) {
         const extraSeeds = [];
@@ -83,7 +90,9 @@
       // Score de sélection = moyenne cumulée (parties de cette génération + passé des survivants).
       const newRecords = results.map((r, i) => Evo.addToRecord(records[i], r.games, opts));
       const fitness = newRecords.map(rec => rec.count ? rec.sum / rec.count : 0);
-      for (let i = 0; i < results.length; i++) results[i].fitness = fitness[i];
+      // Affichage (champion, courbe "meilleur") : score fige a la limite, moyenne des parties de cette gen.
+      const shown = results.map(r => { let s = 0; for (const g of r.games) s += g.score; return r.games.length ? s / r.games.length : 0; });
+      for (let i = 0; i < results.length; i++) results[i].fitness = shown[i];
 
       let championIndex = 0;
       for (let i = 1; i < fitness.length; i++) if (fitness[i] > fitness[championIndex]) championIndex = i;
@@ -128,7 +137,7 @@
       const species = Evo.speciate(population, speciesThreshold, Brain.NET_WEIGHTS);
       speciesThreshold = Evo.adaptThreshold(speciesThreshold, species.count, opts);
 
-      history.push({ gen, best: fitness[championIndex], mean: sum / n, median, spdMax: spdMaxAfter,
+      history.push({ gen, best: shown[championIndex], mean: sum / n, median, spdMax: spdMaxAfter,
         bench: bench.fitness, species: species.count });
 
       const summary = { gen, seeds, history, spdMax: spdMaxAfter, population, results, championIndex };
@@ -191,6 +200,8 @@
       checkState(s);
       await settle();
       gen = s.gen; spdMax = s.spdMax; rng.setState(s.rngState);
+      // Sauvegarde sans limite (ou Infinity perdu en JSON -> null) : on pose la limite de depart.
+      if (!(typeof spdMax === 'number' && spdMax > 0 && isFinite(spdMax))) spdMax = initialSpdMax();
       population = s.population.map(w => new Float32Array(w));
       // Anciennes sauvegardes sans `records` : tout le monde repart sans passé.
       records = population.map((_, i) => (Array.isArray(s.records) && s.records[i]) ? { sum: s.records[i].sum, count: s.records[i].count } : null);
