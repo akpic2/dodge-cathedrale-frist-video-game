@@ -4,7 +4,7 @@
   const Evo = (typeof DodgeEvo !== 'undefined') ? DodgeEvo : require('./evolution.js');
   const Notables = (typeof DodgeNotables !== 'undefined') ? DodgeNotables : require('./notables.js');
 
-  function poolSize(hc) { return Math.max(1, (hc || 2) - 1); }
+  function poolSize(hc, requested) { const max = Math.max(1, Math.min(32, hc || 2)); return requested > 0 ? Math.min(max, Math.max(1, Math.floor(requested))) : max; }
 
   // Les notables sont immuables une fois créés : on partage les objets (pas de copie profonde à chaque sauvegarde).
   function copyNotableState(ns) {
@@ -24,10 +24,10 @@
     if (s.population[0].length !== Brain.N_WEIGHTS) bad('cerveaux d\'une ancienne version du bot (capteurs différents)');
   }
 
-  // Banc de validation déterministe de 256 graines, strictement exclues de l'entraînement.
+  // Banc de validation déterministe de 128 graines, strictement exclues de l'entraînement.
   const BENCH_SEEDS = (function () {
     const r = Sim.makeRng(0x5eedbe7c), out = [];
-    for (let i = 0; i < 256; i++) out.push(Math.floor(r.next() * 4294967296) >>> 0);
+    for (let i = 0; i < 128; i++) out.push(Math.floor(r.next() * 4294967296) >>> 0);
     return out;
   })();
   const BENCH_SEED_SET = new Set(BENCH_SEEDS);
@@ -106,7 +106,7 @@
         spdMaxAfter = Evo.updateSpdMax(spdMaxBefore, championGames, opts).spdMax;
       }
 
-      // Banc d'essai du champion (100 graines fixes, sans limite de vitesse).
+      // Banc d'essai du champion (128 graines fixes, sans limite de vitesse).
       const benchCfg = Object.assign({}, cfg, { spdMax: Infinity });
       const bench = (await evaluate([population[championIndex]], BENCH_SEEDS, benchCfg))[0];
       const benchSorted = bench.games.map(g => g.survival !== undefined ? g.survival : g.score).sort((a, b) => a - b);
@@ -147,7 +147,17 @@
       const summary = { gen, seeds, history, spdMax: spdMaxAfter, population, results, championIndex, gamesEvaluated };
       spdMax = spdMaxAfter;
       const elites = Evo.eliteIndices(fitness, opts, species);
-      population = Evo.nextGeneration(population, fitness, rng, opts, species);
+      const stagnation = benchBest ? Math.max(0, gen - benchBest.gen) : gen;
+      const pressure = Math.min(2.2, stagnation / 55);
+      const adaptiveOpts = Object.assign({}, opts, {
+        mutRate: Math.min(0.48, (opts.mutRate || Evo.DEFAULTS.mutRate) * (1 + pressure)),
+        sigmaMut: Math.min(0.75, (opts.sigmaMut || Evo.DEFAULTS.sigmaMut) + Math.min(0.4, stagnation / 260)),
+        immigrantFrac: Math.min(0.16, 0.025 + stagnation / 1500),
+        macroMutationFrac: Math.min(0.24, 0.04 + stagnation / 850)
+      });
+      const last = history[history.length - 1];
+      if (last) { last.stagnation = stagnation; last.mutRateUsed = adaptiveOpts.mutRate; last.immigrantFrac = adaptiveOpts.immigrantFrac; last.macroMutationFrac = adaptiveOpts.macroMutationFrac; }
+      population = Evo.nextGeneration(population, fitness, rng, adaptiveOpts, species);
       // Les élites sont en tête de la nouvelle population : elles gardent leur passé ; les enfants repartent de zéro.
       records = population.map((_, i) => i < elites.length ? newRecords[elites[i]] : null);
       gen++;
