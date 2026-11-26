@@ -54,7 +54,7 @@
     // champion = meilleure fitness ; meilleure partie globale ; plus de sauts latéraux
     let champ = 0, topBot = 0, topGame = bestGame(results[0].games), sideBot = 0, sideGame = results[0].games[0];
     for (let i = 0; i < results.length; i++) {
-      if (results[i].fitness > results[champ].fitness) champ = i;
+      if ((results[i].selectionFitness !== undefined ? results[i].selectionFitness : results[i].fitness) > (results[champ].selectionFitness !== undefined ? results[champ].selectionFitness : results[champ].fitness)) champ = i;
       const bg = bestGame(results[i].games);
       if (bg.score > topGame.score) { topGame = bg; topBot = i; }
       for (const g of results[i].games) if (g.sideDodged > sideGame.sideDodged) { sideGame = g; sideBot = i; }

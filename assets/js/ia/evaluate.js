@@ -3,7 +3,7 @@
   const Sensors = (typeof DodgeSensors !== 'undefined') ? DodgeSensors : require('./sensors.js');
   const Brain = (typeof DodgeBrain !== 'undefined') ? DodgeBrain : require('./brain.js');
 
-  const DodgeEval = { MAX_GAME_TIME: 600, playGame, evaluateBrain, evaluateBatch };
+  const DodgeEval = { MAX_GAME_TIME: 600, playGame, evaluateBrain, evaluateBatch, lowerTailMean };
 
   const inputs = new Float64Array(Sensors.N_INPUTS);
 
@@ -21,13 +21,27 @@
     };
   }
 
+  // Moyenne des 25 % de parties les plus difficiles : évite qu'un bot soit sélectionné
+  // uniquement parce qu'il a eu quelques graines faciles.
+  function lowerTailMean(games, fraction) {
+    if (!games.length) return 0;
+    const values = games.map(g => g.survival !== undefined ? g.survival : g.score).sort((a, b) => a - b);
+    const count = Math.max(1, Math.ceil(values.length * (fraction || 0.25)));
+    let sum = 0;
+    for (let i = 0; i < count; i++) sum += values[i];
+    return sum / count;
+  }
+
   function evaluateBrain(w, seeds, cfg) {
     const games = seeds.map(s => playGame(w, s, cfg));
     let sum = 0, surv = 0;
     for (const g of games) { sum += g.score; surv += g.survival; }
     const n = games.length;
-    // fitness = score affiche (fige a la limite) ; survival = temps complet, pour la selection.
-    return { fitness: n ? sum / n : 0, survival: n ? surv / n : 0, games };
+    const survival = n ? surv / n : 0;
+    const lowerTail = lowerTailMean(games, 0.25);
+    // 75 % moyenne + 25 % pire quartile : privilégie la survie reproductible.
+    const selectionFitness = 0.75 * survival + 0.25 * lowerTail;
+    return { fitness: n ? sum / n : 0, survival, lowerTail, selectionFitness, games };
   }
 
   function evaluateBatch(brains, seeds, cfg) {

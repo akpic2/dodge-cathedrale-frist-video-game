@@ -24,13 +24,22 @@
     if (s.population[0].length !== Brain.N_WEIGHTS) bad('cerveaux d\'une ancienne version du bot (capteurs différents)');
   }
 
-  // Banc d'essai : 100 graines fixes, jamais utilisées pour l'entraînement, jouées sans limite de vitesse
-  // (le vrai jeu). Le champion de chaque génération y passe : c'est son « vrai niveau ».
+  // Banc de validation déterministe de 256 graines, strictement exclues de l'entraînement.
   const BENCH_SEEDS = (function () {
     const r = Sim.makeRng(0x5eedbe7c), out = [];
-    for (let i = 0; i < 100; i++) out.push(Math.floor(r.next() * 4294967296) >>> 0);
+    for (let i = 0; i < 256; i++) out.push(Math.floor(r.next() * 4294967296) >>> 0);
     return out;
   })();
+  const BENCH_SEED_SET = new Set(BENCH_SEEDS);
+  function nextTrainingSeed(rng) {
+    let seed;
+    do { seed = Math.floor(rng.next() * 4294967296) >>> 0; } while (BENCH_SEED_SET.has(seed));
+    return seed;
+  }
+  function percentile(sorted, p) {
+    if (!sorted.length) return 0;
+    return sorted[Math.max(0, Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * p)))];
+  }
   const INIT_THRESHOLD = 0.6;
 
   function createTrainer(conf) {
@@ -69,30 +78,21 @@
 
     async function runOne() {
       const seeds = [];
-      for (let i = 0; i < gamesPerBot; i++) seeds.push(Math.floor(rng.next() * 4294967296) >>> 0);
+      for (let i = 0; i < gamesPerBot; i++) seeds.push(nextTrainingSeed(rng));
       const spdMaxBefore = spdMax;
       const playCfg = Object.assign({}, cfg, { spdMax: spdMaxBefore });
       const results = await evaluate(population, seeds, playCfg);
       // Score brut de la génération (5 parties) : sert aux courbes moyenne/médiane.
       const rawFitness = results.map(r => r.fitness);
 
-      // Repêchage : le top rejoue des parties en plus, sur de nouvelles graines communes.
-      // (sur la survie complete : au-dela de la limite, le score affiche est fige)
-      const rescued = Evo.rescueIndices(results.map(r => r.survival !== undefined ? r.survival : r.fitness), opts);
-      const rescueGames = opts.rescueGames !== undefined ? opts.rescueGames : Evo.DEFAULTS.rescueGames;
-      if (rescued.length) {
-        const extraSeeds = [];
-        for (let i = 0; i < rescueGames; i++) extraSeeds.push(Math.floor(rng.next() * 4294967296) >>> 0);
-        const extra = await evaluate(rescued.map(i => population[i]), extraSeeds, playCfg);
-        rescued.forEach((i, k) => { results[i] = { fitness: results[i].fitness, games: results[i].games.concat(extra[k].games) }; });
-      }
-
-      // Score de sélection = moyenne cumulée (parties de cette génération + passé des survivants).
-      const newRecords = results.map((r, i) => Evo.addToRecord(records[i], r.games, opts));
-      const fitness = newRecords.map(rec => rec.count ? rec.sum / rec.count : 0);
+      // Chaque génome reçoit exactement le même nombre de parties et les mêmes graines.
+      // La sélection utilise une fitness robuste (moyenne + quartile inférieur), sans avantage
+      // statistique artificiel lié au repêchage ou à l'ancienneté des élites.
+      const fitness = results.map(r => r.selectionFitness !== undefined ? r.selectionFitness : (r.survival !== undefined ? r.survival : r.fitness));
+      const newRecords = fitness.map(value => ({ sum: value, count: 1 }));
       // Affichage (champion, courbe "meilleur") : score fige a la limite, moyenne des parties de cette gen.
       const shown = results.map(r => { let s = 0; for (const g of r.games) s += g.score; return r.games.length ? s / r.games.length : 0; });
-      for (let i = 0; i < results.length; i++) results[i].fitness = shown[i];
+      for (let i = 0; i < results.length; i++) { results[i].fitness = shown[i]; results[i].selectionFitness = fitness[i]; }
 
       let championIndex = 0;
       for (let i = 1; i < fitness.length; i++) if (fitness[i] > fitness[championIndex]) championIndex = i;
@@ -109,6 +109,9 @@
       // Banc d'essai du champion (100 graines fixes, sans limite de vitesse).
       const benchCfg = Object.assign({}, cfg, { spdMax: Infinity });
       const bench = (await evaluate([population[championIndex]], BENCH_SEEDS, benchCfg))[0];
+      const benchSorted = bench.games.map(g => g.survival !== undefined ? g.survival : g.score).sort((a, b) => a - b);
+      const benchP10 = percentile(benchSorted, 0.10);
+      const benchMedian = percentile(benchSorted, 0.50);
       const benchNotables = [];
       if (!benchBest || bench.fitness > benchBest.score) {
         let bg = bench.games[0];
@@ -137,10 +140,11 @@
       const species = Evo.speciate(population, speciesThreshold, Brain.NET_WEIGHTS);
       speciesThreshold = Evo.adaptThreshold(speciesThreshold, species.count, opts);
 
+      const gamesEvaluated = results.reduce((total, r) => total + r.games.length, 0) + bench.games.length;
       history.push({ gen, best: shown[championIndex], mean: sum / n, median, spdMax: spdMaxAfter,
-        bench: bench.fitness, species: species.count });
+        bench: bench.fitness, benchP10, benchMedian, gamesEvaluated, species: species.count });
 
-      const summary = { gen, seeds, history, spdMax: spdMaxAfter, population, results, championIndex };
+      const summary = { gen, seeds, history, spdMax: spdMaxAfter, population, results, championIndex, gamesEvaluated };
       spdMax = spdMaxAfter;
       const elites = Evo.eliteIndices(fitness, opts, species);
       population = Evo.nextGeneration(population, fitness, rng, opts, species);

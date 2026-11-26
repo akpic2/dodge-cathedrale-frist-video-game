@@ -109,12 +109,13 @@
     const spawnIntervalSeconds = sim.spawnInt / REFERENCE_FPS;
     while (sim.spawnTimer >= spawnIntervalSeconds) { spawn(sim); sim.spawnTimer -= spawnIntervalSeconds; }
 
+    let crossedSide = 0;
     for (const g of sim.obstacles) {
       if (g.fromRight) {
         const before = g.x - p.x;
         g.x += g.vx * DT;
         const after = g.x - p.x;
-        if ((before < 0 && after >= 0) || (before > 0 && after <= 0)) sim.stats.sideDodged++;
+        if ((before < 0 && after >= 0) || (before > 0 && after <= 0)) crossedSide++;
       } else {
         g.y += g.vy * DT;
       }
@@ -124,6 +125,8 @@
 
     // Collision : comme finish(false);return dans la refonte, le pas s'arrête là (le joueur ne bouge pas).
     for (const g of sim.obstacles) { if (collides(p, g)) { sim.dead = true; return; } }
+    // Un passage au centre n'est une esquive que si aucune collision n'a tué le joueur.
+    sim.stats.sideDodged += crossedSide;
 
     // JOUEUR
     if (input.left) p.x -= cfg.charSpeed * DT;

@@ -124,7 +124,7 @@
     summary.cfg = run.cfg;
     history = summary.history;
     lastSummary = summary;
-    const games = run.opts.popSize * run.opts.gamesPerBot;
+    const games = summary.gamesEvaluated || run.opts.popSize * run.opts.gamesPerBot;
     rateWin.push({ t: performance.now(), games });
     if (rateWin.length > 11) rateWin.shift();
     if (mode === 'live' && $('liveToggle').checked) { live.show(summary, SAMPLE, LIVE_SPEED); $('stageLabel').textContent = liveLabel(); }
@@ -197,7 +197,14 @@
   // Le nouveau trainer est construit et chargé à part : si ça échoue, l'ancien (et son état) reste intact.
   async function adopt(s) {
     const ch = s.charId ? charById(s.charId) : (CHARS.find(c => c.speed === (s.cfg && s.cfg.charSpeed)) || CHARS[0]);
-    const b = buildTrainer({ seed: s.seed !== undefined ? s.seed : 1, opts: s.opts || {}, cfg: s.cfg || {}, charId: ch.id });
+    const savedOpts = Object.assign({}, s.opts || {});
+    const legacyGamesPerGeneration = (savedOpts.popSize || DodgeEvo.DEFAULTS.popSize) *
+      (savedOpts.gamesPerBot || DodgeEvo.DEFAULTS.gamesPerBot) +
+      Math.ceil((savedOpts.popSize || DodgeEvo.DEFAULTS.popSize) * 0.2) * 20 + 100;
+    // Migration du réglage historique par défaut : 15 parties ne suffisent pas à stabiliser la sélection.
+    if (savedOpts.gamesPerBot === 15) savedOpts.gamesPerBot = 20;
+    const b = buildTrainer({ seed: s.seed !== undefined ? s.seed : 1, opts: savedOpts, cfg: s.cfg || {}, charId: ch.id });
+    b.run.legacyGamesPerGeneration = legacyGamesPerGeneration;
     await b.t.loadState(s); // lève une erreur si la sauvegarde est invalide
     // succès : on arrête l'ancien (génération en cours terminée) avant de basculer
     if (trainer) await trainer.pause();
@@ -260,7 +267,11 @@
   function updateStats() {
     const gens = history.length;
     $('stGen').textContent = fmt(gens);
-    $('stGames').textContent = run ? fmt(gens * run.opts.popSize * run.opts.gamesPerBot) : '0';
+    const legacyGamesPerGeneration = run
+      ? (run.legacyGamesPerGeneration || (run.opts.popSize * run.opts.gamesPerBot + Math.ceil(run.opts.popSize * 0.2) * 20 + 100))
+      : 0;
+    const totalGames = history.reduce((total, h) => total + (h.gamesEvaluated || legacyGamesPerGeneration), 0);
+    $('stGames').textContent = fmt(totalGames);
     let rate = '–';
     if (phase === 'running' && rateWin.length >= 2) {
       let g = 0; for (let i = 1; i < rateWin.length; i++) g += rateWin[i].games;
