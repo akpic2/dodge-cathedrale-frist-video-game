@@ -1,9 +1,9 @@
 (function (root) {
   const Sim = (typeof DodgeSim !== 'undefined') ? DodgeSim : require('../sim.js');
   // v2 : pas fixe 1/60 (refonte Mote). Une sauvegarde d'un autre pas ne rejoue pas les mêmes parties.
-  const VERSION = 3;
+  const VERSION = 4;
   const INCOMPATIBLE_MSG = 'Sauvegarde d\'une ancienne version du jeu — incompatible';
-  const DB_NAME = 'dodge-ia', STORE = 'runs', KEY = 'current';
+  const DB_NAME = 'dodge-ia-v3', STORE = 'runs', KEY = 'current';
 
   function bytesToB64(bytes) {
     if (typeof btoa === 'function') {
