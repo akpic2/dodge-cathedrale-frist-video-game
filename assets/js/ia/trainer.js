@@ -44,6 +44,50 @@
 
   // Version coopérative de la spéciation : même résultat que Evo.speciate(),
   // mais cède régulièrement le thread principal pour garder l'interface fluide.
+
+  // Même reproduction que Evo.nextGeneration(), avec des cessions régulières au navigateur.
+  async function nextGenerationYielding(pop, fitness, rng, opts, species) {
+    const o = Object.assign({}, Evo.DEFAULTS, opts);
+    const n = pop.length, len = pop[0].length, sIdx = len - 1;
+    const next = [];
+    for (const i of Evo.eliteIndices(fitness, opts, species)) next.push(new Float32Array(pop[i]));
+    const sel = species ? fitness.map((f, i) => f / species.sizes[species.ids[i]]) : fitness;
+    function pick() {
+      let best = -1;
+      for (let t = 0; t < o.tournament; t++) {
+        const i = Math.floor(rng.next() * n);
+        if (best < 0 || sel[i] > sel[best]) best = i;
+      }
+      return pop[best];
+    }
+    while (next.length < n) {
+      const child = new Float32Array(len);
+      if (rng.next() < Math.max(0, Math.min(0.3, o.immigrantFrac || 0))) {
+        for (let k = 0; k < sIdx; k++) child[k] = (rng.next() * 2 - 1) * 0.8;
+        child[sIdx] = o.mutSigma;
+        next.push(child);
+      } else {
+        const a = pick(), b = rng.next() < o.crossoverRate ? pick() : null;
+        let sigma = (a[sIdx] > 0 ? a[sIdx] : o.mutSigma) * (1 + o.sigmaMut * Evo.gaussian(rng));
+        sigma = sigma < o.sigmaMin ? o.sigmaMin : (sigma > o.sigmaMax ? o.sigmaMax : sigma);
+        for (let k = 0; k < sIdx; k++) {
+          let v = (b && rng.next() < 0.5) ? b[k] : a[k];
+          if (rng.next() < o.mutRate) v += Evo.gaussian(rng) * sigma;
+          child[k] = v;
+        }
+        if (rng.next() < Math.max(0, Math.min(0.35, o.macroMutationFrac || 0))) {
+          const start = Math.floor(rng.next() * sIdx);
+          const block = Math.max(1, Math.floor(sIdx * (0.025 + rng.next() * 0.10)));
+          for (let k = start; k < Math.min(sIdx, start + block); k++) child[k] = (rng.next() * 2 - 1) * 0.8;
+        }
+        child[sIdx] = sigma;
+        next.push(child);
+      }
+      if ((next.length & 15) === 0) await new Promise(resolve => setTimeout(resolve, 0));
+    }
+    return next;
+  }
+
   async function speciateYielding(pop, threshold, nNet) {
     const reps = [], ids = new Array(pop.length), sizes = [];
     for (let i = 0; i < pop.length; i++) {
@@ -173,7 +217,7 @@
       });
       const last = history[history.length - 1];
       if (last) { last.stagnation = stagnation; last.mutRateUsed = adaptiveOpts.mutRate; last.immigrantFrac = adaptiveOpts.immigrantFrac; last.macroMutationFrac = adaptiveOpts.macroMutationFrac; }
-      population = Evo.nextGeneration(population, fitness, rng, adaptiveOpts, species);
+      population = await nextGenerationYielding(population, fitness, rng, adaptiveOpts, species);
       // Les élites sont en tête de la nouvelle population : elles gardent leur passé ; les enfants repartent de zéro.
       records = population.map((_, i) => i < elites.length ? newRecords[elites[i]] : null);
       gen++;
