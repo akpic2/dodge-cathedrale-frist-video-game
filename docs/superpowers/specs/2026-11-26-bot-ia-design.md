@@ -88,12 +88,12 @@ assets/js/ia/dashboard.js  UI de ia.html : stats, courbes, liste des perfs, repl
 ### 6.2 `sim.js` — la simulation
 
 - `createSim({seed, difficulty, charSpeed})` renvoie un état : joueur, obstacles, `spd`, `spawnInt`, timers, `time`, `score`, `dead`.
-- `step(state, input)` fait avancer d'**un pas fixe de 1/144 s**, avec `input = {left, right, jump}`. Le pas de 1/144 s correspond à la référence pour laquelle les timers du jeu sont réglés.
+- `step(state, input)` fait avancer d'**un pas fixe de 1/60 s**, avec `input = {left, right, jump}`. C'est le même pas que `FIXED_STEP` de la refonte Mote (le vrai jeu tourne déjà à pas fixe de 1/60 s).
 - Elle reproduit **à l'identique** les règles du §3 (spawn, vitesses, progression de difficulté, saut, gravité, collision, score).
 - **Hasard** : un générateur pseudo-aléatoire à graine (mulberry32 ou équivalent, uniquement en opérations entières) remplace `Math.random()`. Une graine donne exactement une partie.
 - Aucune dépendance au DOM, au canvas, à `Date.now()` ou au `localStorage`.
 
-**Branchement du vrai jeu** : en mode classique, `loop()` utilise un accumulateur. On ajoute le `dt` réel et on appelle `step()` autant de fois qu'il faut à 1/144 s, puis `render.js` dessine l'état. La graine est tirée au hasard à chaque partie. Pour le joueur, rien ne change à part la régularité. **Le mode Aventure garde son code actuel**, sans y toucher.
+**Branchement du vrai jeu** : en mode classique, `loop()` utilise un accumulateur. On ajoute le `dt` réel et on appelle `step()` autant de fois qu'il faut à 1/60 s, puis `render.js` dessine l'état. La graine est tirée au hasard à chaque partie. Pour le joueur, rien ne change à part la régularité. **Le mode Aventure garde son code actuel**, sans y toucher.
 
 ### 6.3 `brain.js` — le cerveau d'un bot
 
@@ -145,6 +145,8 @@ Perfs enregistrées automatiquement :
 
 On peut aussi relancer n'importe quel cerveau sauvegardé **sur une nouvelle graine**, pour vérifier qu'il s'en sort sur une partie inconnue.
 
+**Éclaircissement des champions** (pour que la sauvegarde ne grossisse pas sans fin) : on garde le champion de chaque génération jusqu'à la gén. 20, puis 1 sur 10 jusqu'à 200, 1 sur 100 jusqu'à 2 000, puis 1 sur 1 000. Le champion de la dernière génération est toujours gardé. Les autres perfs (records, bonds, paliers, limite, humain battu) sont toutes gardées, sauf les esquives latérales : seulement les 20 plus récentes. Les esquives ne passent pas dans la file d'auto-sélection.
+
 ### 6.6 Tableau de bord (`ia.html`)
 
 Dans le style visuel du jeu et de MOTE. Akpic veut **les trois à la fois** : les stats, la possibilité de choisir lui-même, et une sélection automatique de ce qui vaut le coup d'être regardé.
@@ -183,7 +185,7 @@ Dans le style visuel du jeu et de MOTE. Akpic veut **les trois à la fois** : le
 
 ## 9. Décisions et choix restants
 
-- **Code de référence** : le jeu de base avec la refonte graphique, c'est-à-dire la branche `main` du repo GitHub (dernier commit `8b68b34`, « Fix frame-rate dependent difficulty and spawn timing »). **À confirmer** : avant de copier les règles dans `sim.js`, on ouvre cette version dans le navigateur d'Akpic pour qu'il valide que c'est la bonne.
+- **Code de référence** : le jeu avec la refonte graphique Mote, c'est-à-dire la branche `refonte-mote` du repo GitHub (commit `23ce059`, « Use fixed timestep for frame-rate independent gameplay »), et non `main`. Les règles de `sim.js` en sont copiées, avec son pas fixe de 1/60 s.
 - **Perso et difficulté** : **perso de base (Homme Bleu, vitesse 280), difficulté Normal**, sur décision d'Akpic. Pas de record humain à atteindre : il jugera à l'œil.
-- *(Choix de Claude)* Pas de simulation de **1/144 s**.
+- Pas de simulation de **1/60 s** (le `FIXED_STEP` de la refonte Mote). Les sauvegardes enregistrent ce pas (format v2) : une sauvegarde d'un autre pas est refusée.
 - Réseau fixe 16-16 plutôt que NEAT, où le réseau se construit lui-même : beaucoup plus simple à coder et à déboguer, et largement suffisant pour ce jeu. On garde quand même le visuel « cerveau qui s'allume ».
