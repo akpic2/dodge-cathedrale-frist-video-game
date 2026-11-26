@@ -1,15 +1,18 @@
-// Simulation déterministe du mode classique (Survie infinie) de Dodge la Cathédrale.
-// Règles copiées de script.js : initGame, spawnGargoyle (mode classique), loop (else classique),
-// bloc JOUEUR et checkCollision. Math.random -> sim.rng, dt variable -> DT fixe.
+// Simulation déterministe du mode classique (Survie sans limite) de Dodge la Cathédrale.
+// Règles copiées de script.js (refonte Mote) : start, spawnGargoyle classique + pushSide/pushFall,
+// branche « Mode classique » de gameStep, bloc JOUEUR, checkCollision et loop.
+// Math.random -> sim.rng ; pas fixe DT = 1/60 comme FIXED_STEP de la refonte.
 (function (root) {
-  const W = 480, H = 420, DT = 1 / 144;
+  const W = 480, H = 420, DT = 1 / 60;
   const DIFFICULTIES = {
     easy: { spd: 100, spawnInt: 300 },
     normal: { spd: 150, spawnInt: 200 },
     hard: { spd: 220, spawnInt: 120 },
   };
   const DEFAULT_SPD_MAX = Infinity;
-  const PROGRESSION_INTERVAL = 200 / 144;
+  const REFERENCE_FPS = 144; // spawnInt et progression restent calés sur l'équilibrage historique à 144 FPS
+  const PROGRESSION_INTERVAL = 200 / REFERENCE_FPS;
+  const MAX_STEPS_PER_FRAME = 60;
 
   // mulberry32 : seulement des opérations entières
   function makeRng(seed) {
@@ -54,18 +57,20 @@
     };
   }
 
+  // spawnGargoyle (mode classique) : type, puis latéral (pushSide) ou chute (pushFall).
   function spawn(sim) {
     const rng = sim.rng, spd = sim.spd, list = sim.obstacles;
     const type = rng.next() < 0.3 ? 'vitrail' : 'gargouille';
-    const rand = rng.next();
-    if (rand < 0.3) {
+    if (rng.next() < 0.3) {
+      // pushSide
       const y = H - 40;
-      if (rand < 0.15) {
+      if (rng.next() < 0.5) {
         list.push({ x: W + 20, y, w: 50, h: 50, vx: -(spd * 0.4 + 18 + rng.next() * 18), vy: 0, rot: 0, type, fromRight: true });
       } else {
         list.push({ x: -20, y, w: 50, h: 50, vx: spd * 0.4 + 18 + rng.next() * 18, vy: 0, rot: 0, type, fromRight: true });
       }
     } else {
+      // pushFall
       const x = rng.next() * (W - 30) + 15;
       list.push({ x, y: -30, w: 50, h: 50, vy: spd + 30 + rng.next() * 48, vx: 0, rot: 0, type, fromRight: false });
     }
@@ -97,7 +102,8 @@
     }
 
     sim.spawnTimer += DT;
-    if (sim.spawnTimer >= sim.spawnInt / 144) { spawn(sim); sim.spawnTimer -= sim.spawnInt / 144; }
+    const spawnIntervalSeconds = sim.spawnInt / REFERENCE_FPS;
+    while (sim.spawnTimer >= spawnIntervalSeconds) { spawn(sim); sim.spawnTimer -= spawnIntervalSeconds; }
 
     for (const g of sim.obstacles) {
       if (g.fromRight) {
@@ -112,7 +118,8 @@
     }
     sim.obstacles = sim.obstacles.filter(g => g.fromRight ? (g.x > -40 && g.x < W + 40) : (g.y < H + 40));
 
-    for (const g of sim.obstacles) { if (collides(p, g)) { sim.dead = true; break; } }
+    // Collision : comme finish(false);return dans la refonte, le pas s'arrête là (le joueur ne bouge pas).
+    for (const g of sim.obstacles) { if (collides(p, g)) { sim.dead = true; return; } }
 
     // JOUEUR
     if (input.left) p.x -= cfg.charSpeed * DT;
@@ -125,10 +132,12 @@
     if (sim.spd >= cfg.spdMax) sim.stats.timeAtCap += DT;
   }
 
+  // Reproduit loop() de la refonte : temps réel borné à [0, 1] s, au plus 60 pas par appel.
+  // Le reliquat reste dans sim.acc (comme simulationAccumulator). Retourne le nombre de pas joués.
   function advanceRealTime(sim, dtSeconds, input) {
-    sim.acc += Math.min(dtSeconds, 0.1);
+    sim.acc += Math.min(Math.max(dtSeconds, 0), 1);
     let n = 0;
-    while (sim.acc >= DT) { sim.acc -= DT; step(sim, input); n++; }
+    while (sim.acc >= DT && n < MAX_STEPS_PER_FRAME && !sim.dead) { step(sim, input); sim.acc -= DT; n++; }
     return n;
   }
 

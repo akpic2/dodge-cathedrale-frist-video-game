@@ -72,6 +72,8 @@ let difficultyProgressTimer=0,spawnTimer=0,bossShootTimer=0;
 // même si le navigateur n'affiche que 30, 40 ou 144 images/seconde.
 const FIXED_STEP=1/60;let simulationAccumulator=0;
 let shieldActive=false,shieldTimer=0,shieldCooldown=0;
+// Mode classique : simulation partagée avec le bot IA (assets/js/sim.js), dessinée par assets/js/render.js.
+let sim=null;
 let windForce=0,windChangeCooldown=0;
 let bossHP=0,bossMaxHP=15,bossX=W/2,bossY=80,bossVX=100,bossAnger=0;
 
@@ -110,6 +112,7 @@ function start(){
  bossHP=bossMaxHP;bossX=W/2;bossY=80;bossVX=100;bossAnger=0;
  if(mode==='adventure'){spd=lvl().spd;spawnInt=lvl().spawnInt}else{spd=diff.spd;spawnInt=diff.spawnInt}
  difficultyProgressTimer=0;spawnTimer=0;bossShootTimer=0;simulationAccumulator=0;paused=false;
+ sim=mode==='classic'?DodgeSim.createSim({seed:(Math.random()*2**32)>>>0,difficulty:['easy','normal','hard'][difficulty],charSpeed:current().speed}):null;
  cv.parentElement.style.background=mode==='adventure'?BG[level]:GAME_BACKGROUND;
  $('#game-mode-label').textContent=mode==='classic'?'MODE CLASSIQUE — '+diff.name:'MODE AVENTURE — ÉTAPE '+(level+1)+'/05';
  $('#game-level-title').textContent=mode==='classic'?'La Cathédrale':lvl().name;
@@ -256,7 +259,9 @@ function loop(timestamp){
  // Accumule le temps réel puis exécute autant de pas physiques fixes que nécessaire.
  // Le rythme du gameplay ne dépend donc plus du nombre de frames rendues par le PC.
  const elapsed=Math.min(Math.max((timestamp-lastTime)/1000,0),1);
- lastTime=timestamp;simulationAccumulator+=elapsed;
+ lastTime=timestamp;
+ if(mode==='classic'){classicFrame(elapsed);if(screen==='game'&&!paused)requestAnimationFrame(loop);return}
+ simulationAccumulator+=elapsed;
  let steps=0;
  while(simulationAccumulator>=FIXED_STEP&&steps<60&&screen==='game'&&!paused){
   gameStep(FIXED_STEP);
@@ -349,27 +354,6 @@ function gameStep(dt){
   ctx.textAlign='left';ctx.fillText('NIV.'+lv.id+' — '+lv.name.toUpperCase(),20,16);
   ctx.textAlign='right';ctx.fillText(Math.max(0,Math.ceil(timeLeft))+'S',W-20,16);
   if(dead){finish(false);return}
- }else{
-  // Mode classique
-  // Même difficulté réelle sur tous les écrans, indépendamment des FPS.
-  difficultyProgressTimer+=dt;
-  while(difficultyProgressTimer>=DIFFICULTY_STEP_SECONDS){
-   difficultyProgressTimer-=DIFFICULTY_STEP_SECONDS;
-   spd+=25;spawnInt=Math.max(25,spawnInt-8);
-  }
-  spawnTimer+=dt;
-  let spawnIntervalSeconds=spawnInt/REFERENCE_FPS;
-  while(spawnTimer>=spawnIntervalSeconds){
-   spawnGargoyle();spawnTimer-=spawnIntervalSeconds;
-  }
-  frames++;
-  gargoyles.forEach(g=>{if(g.fromRight)g.x+=g.vx*dt;else g.y+=g.vy*dt;g.rot+=2.4*dt});
-  gargoyles=gargoyles.filter(g=>g.fromRight?(g.x>-40&&g.x<W+40):(g.y<H+40));
-  let dead=false;
-  for(const g of gargoyles){if(checkCollision(player,g)){dead=true;break}}
-  gargoyles.forEach(drawGargoyle);
-  ctx.fillStyle='#000';ctx.font='500 9px '+FONT;ctx.textAlign='left';ctx.fillText('SURVIE SANS LIMITE — '+diffs[difficulty].name,20,16);
-  if(dead){finish(false);return}
  }
 
  // ===== JOUEUR (physique d'origine) =====
@@ -385,6 +369,24 @@ function gameStep(dt){
  ctx.fillStyle=dark?'rgba(255,255,255,.6)':'rgba(0,0,0,.45)';ctx.font='400 9px '+FONT;ctx.textAlign='center';
  ctx.fillText(ch.name.toUpperCase(),player.x,player.y-5);
 
+}
+
+// ===== MODE CLASSIQUE (sim.js + render.js) =====
+// Même pas fixe (1/60) et même plafond (60 pas par image) que loop() : DodgeSim.advanceRealTime.
+function classicFrame(elapsed){
+ DodgeSim.advanceRealTime(sim,elapsed,{left:!!keys.ArrowLeft,right:!!keys.ArrowRight,jump:!!keys.ArrowUp});
+ score=sim.score;scoreTime=sim.time;if(score>best)best=score;
+ $('#game-score').textContent=pad(score);
+ const t=Math.floor(scoreTime);$('#game-timer').textContent=String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0');
+ ctx.setTransform(SCALE,0,0,SCALE,0,0);ctx.imageSmoothingEnabled=false;
+ ctx.clearRect(0,0,W,H);
+ DodgeRender.drawClassicBackground(ctx);
+ sim.obstacles.forEach(g=>DodgeRender.drawObstacle(ctx,g));
+ ctx.fillStyle='#000';ctx.font='500 9px '+FONT;ctx.textAlign='left';ctx.fillText('SURVIE SANS LIMITE — '+diffs[difficulty].name,20,16);
+ const p=sim.player,ch=current();
+ DodgeRender.drawChar(ctx,ch.id,p.x,p.y+p.h,acc);
+ DodgeRender.drawPlayerLabel(ctx,ch.name,p);
+ if(sim.dead)finish(false);
 }
 
 // ===== ÉVÉNEMENTS =====

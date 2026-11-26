@@ -63,7 +63,10 @@ test('obstacles indépendants du joueur', () => {
 
 test('progression de difficulté', () => {
   const s = S.createSim({ seed: 1 });
-  forced(s, 201);
+  const first = Math.ceil((200 / 144) / (1 / 60)); // 84 pas à 60 Hz
+  forced(s, first - 1);
+  assert.equal(s.spd, 150);
+  forced(s, 1);
   assert.equal(s.spd, 175);
   assert.equal(s.spawnInt, 192);
   forced(s, 200000);
@@ -79,7 +82,7 @@ test('spdMax', () => {
 
 test('score', () => {
   const s = S.createSim({ seed: 1 });
-  forced(s, 145);
+  forced(s, 61);
   assert.equal(s.score, 20);
 });
 
@@ -91,7 +94,7 @@ test('saut', () => {
   assert.equal(s.player.vy, -360 + 720 * S.DT);
   let n = 1;
   while (s.player.isJumping && n < 400) { s.dead = false; s.obstacles = []; S.step(s, NONE); n++; }
-  assert.ok(n < 160);
+  assert.ok(n < 70);
   assert.equal(s.player.isJumping, false);
   assert.equal(s.player.y, S.H - 25 - 45);
 });
@@ -108,9 +111,53 @@ test('collides', () => {
 test('advanceRealTime plafonné', () => {
   const s = S.createSim({ seed: 1 });
   const n = S.advanceRealTime(s, 5, NONE);
-  assert.ok(n <= Math.round(0.1 / S.DT));
-  assert.equal(n, 14);
+  assert.ok(n <= 60);
+  assert.ok(n >= 59);
+  assert.equal(S.advanceRealTime(S.createSim({ seed: 1 }), -3, NONE), 0);
   const t = S.createSim({ seed: 1 });
-  const m = S.advanceRealTime(t, 1 / 288, NONE) + S.advanceRealTime(t, 1 / 288, NONE);
+  const m = S.advanceRealTime(t, 1 / 120, NONE) + S.advanceRealTime(t, 1 / 120, NONE);
   assert.equal(m, 1);
+});
+
+test('DT = 1/60', () => {
+  assert.equal(S.DT, 1 / 60);
+});
+
+test('mort = le joueur ne bouge pas pendant le pas mortel', () => {
+  const s = S.createSim({ seed: 1 });
+  S.step(s, NONE);
+  const before = { ...s.player };
+  s.obstacles = [{ x: before.x, y: before.y + 25, w: 50, h: 50, vx: 0, vy: 0, rot: 0, type: 'gargouille', fromRight: false }];
+  S.step(s, { left: false, right: true, jump: true });
+  assert.equal(s.dead, true);
+  assert.deepEqual(s.player, before);
+});
+
+test('ordre des tirages du spawn (pushSide / pushFall de la refonte)', () => {
+  let side = 0, fall = 0;
+  for (let seed = 1; seed <= 40; seed++) {
+    const s = S.createSim({ seed });
+    while (s.obstacles.length === 0) { s.dead = false; S.step(s, NONE); }
+    assert.equal(s.obstacles.length, 1);
+    const g = s.obstacles[0], r = S.makeRng(seed), spd = s.spd;
+    const type = r.next() < 0.3 ? 'vitrail' : 'gargouille';
+    assert.equal(g.type, type);
+    if (r.next() < 0.3) {
+      side++;
+      assert.equal(g.fromRight, true);
+      if (r.next() < 0.5) {
+        assert.equal(g.vx, -(spd * 0.4 + 18 + r.next() * 18));
+        assert.equal(g.x, S.W + 20 + g.vx * S.DT);
+      } else {
+        assert.equal(g.vx, spd * 0.4 + 18 + r.next() * 18);
+        assert.equal(g.x, -20 + g.vx * S.DT);
+      }
+    } else {
+      fall++;
+      assert.equal(g.fromRight, false);
+      assert.equal(g.x, r.next() * (S.W - 30) + 15);
+      assert.equal(g.vy, spd + 30 + r.next() * 48);
+    }
+  }
+  assert.ok(side > 0 && fall > 0);
 });

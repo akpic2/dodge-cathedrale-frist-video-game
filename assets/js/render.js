@@ -1,7 +1,12 @@
 // Dessin du mode classique (fond, obstacles, personnages), partagé par le jeu et les pages IA.
+// Visuels de la refonte Mote : fond clair, encre noire, Inter Tight.
 // Les images sont chargées ici ; sans DOM (Node, worker) les tables restent vides de vraies images.
+// Tout se dessine dans l'espace logique 480×420. Pour un canvas en ×2 (comme le jeu), l'appelant
+// fait lui-même ctx.setTransform(2, 0, 0, 2, 0, 0) et ctx.imageSmoothingEnabled = false avant de dessiner.
 (function (root) {
   const W = 480, H = 420;
+  const FONT = '"Inter Tight",Arial,sans-serif';
+  const BACKGROUND = '#f3f3f3';
 
   function loadImg(src) {
     if (typeof Image === 'undefined') return null;
@@ -35,50 +40,35 @@
     Gigachad:{base:loadImg('assets/img/Personnages_speciaux/Gigachad.png'),lunettes:null,aureole:null,biere:null,},
   };
 
-  // Fond du mode classique (le fond uni + le sol)
+  // Fond du mode classique (drawBackground de la refonte) : fond uni + ligne de sol 1px
   function drawClassicBackground(ctx) {
-    ctx.fillStyle = '#0d0d1f'; ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = '#1e1a3a'; ctx.fillRect(0, H - 80, W, 80);
+    ctx.fillStyle = BACKGROUND; ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = '#cfcfcf'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, H - 24.5); ctx.lineTo(W, H - 24.5); ctx.stroke();
   }
 
-  // Obstacle centré en (g.x, g.y)
+  // Obstacle centré en (g.x, g.y) : drawGargoyle de la refonte
   function drawObstacle(ctx, g) {
     ctx.save();
     ctx.translate(g.x, g.y);
-
-    function drawProjImg(imgKey, w, h, rotateAmt) {
-      const img = PROJ_IMGS[imgKey];
-      if (rotateAmt) ctx.rotate(rotateAmt);
-      if (ready(img)) {
-        ctx.drawImage(img, -w / 2, -h / 2, w, h);
-      } else {
-        // Fallback si image pas chargée
-        ctx.fillStyle = '#9b7fd4'; ctx.fillRect(-w / 2, -h / 2, w, h);
-        ctx.fillStyle = '#fff'; ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
-        ctx.fillText(imgKey.slice(0, 4), 0, 4);
-      }
-    }
-
     const s = g.w || 32;
-
+    const draw = (key, w, h, rot) => {
+      const img = PROJ_IMGS[key];
+      if (rot) ctx.rotate(rot);
+      if (ready(img)) ctx.drawImage(img, -w / 2, -h / 2, w, h);
+      else { ctx.fillStyle = '#777'; ctx.fillRect(-w / 2, -h / 2, w, h); }
+    };
     switch (g.type) {
-      case 'vitrail':      drawProjImg('vitrail', s, s, g.rot); break;
-      case 'cloche':       drawProjImg('cloche', s, s, Math.sin(g.rot) * 0.3); break;
-      case 'masqueJoyeux': drawProjImg('masqueJoyeux', s, s, g.rot); break;
-      case 'masqueTriste': drawProjImg('masqueTriste', s, s, g.rot); break;
-      case 'popCorn':      drawProjImg('popCorn', s, s, 0); break;
-      case 'clap':         drawProjImg('clap', s, s, g.rot); break;
-      case 'brique':       drawProjImg('brique', s, s * 0.6, 0); break;
-      case 'gargouille':   drawProjImg('gargouille', s, s, 0); break;
-      case 'bouleFeu':     drawProjImg('bouleFeu', s, s, g.rot); break;
-      case 'bouleFeu2':    drawProjImg('bouleFeu2', s + 8, s + 8, g.rot); break;
-      default:
-        // Fallback générique
-        ctx.fillStyle = '#6b6080'; ctx.fillRect(-12, -14, 24, 22);
-        ctx.strokeStyle = '#4a4060'; ctx.lineWidth = 1; ctx.strokeRect(-12, -14, 24, 22);
-        ctx.fillStyle = '#ff4444'; ctx.beginPath(); ctx.arc(-5, -10, 3, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(5, -10, 3, 0, Math.PI * 2); ctx.fill();
-        break;
+      case 'vitrail':      draw('vitrail', s, s, g.rot); break;
+      case 'cloche':       draw('cloche', s, s, Math.sin(g.rot) * 0.3); break;
+      case 'masqueJoyeux': draw('masqueJoyeux', s, s, g.rot); break;
+      case 'masqueTriste': draw('masqueTriste', s, s, g.rot); break;
+      case 'popCorn':      draw('popCorn', s, s, 0); break;
+      case 'clap':         draw('clap', s, s, g.rot); break;
+      case 'brique':       draw('brique', s, s * 0.6, 0); break;
+      case 'gargouille':   draw('gargouille', s, s, 0); break;
+      case 'bouleFeu':     draw('bouleFeu', s, s, g.rot); break;
+      case 'bouleFeu2':    draw('bouleFeu2', s + 8, s + 8, g.rot); break;
     }
     ctx.restore();
   }
@@ -99,14 +89,24 @@
     if (ready(img)) {
       ctx.drawImage(img, x - w / 2, yFeet - h, w, h);
     } else {
-      ctx.fillStyle = '#5a4a80'; ctx.fillRect(x - w / 2, yFeet - h, w, h);
-      ctx.fillStyle = '#fff'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText(charId.slice(0, 4), x, yFeet - h / 2);
+      ctx.fillStyle = '#000'; ctx.fillRect(x - w / 2, yFeet - h, w, h);
     }
     ctx.restore();
   }
 
+  // Libellé au-dessus d'un joueur (nom du perso dans le jeu) : centré, en majuscules, encre à 45 %.
+  // p : {x, y} du joueur (y = haut de la hitbox), comme dans la refonte.
+  function drawPlayerLabel(ctx, text, p, alpha) {
+    ctx.save();
+    if (alpha !== undefined && alpha !== 1) ctx.globalAlpha *= alpha;
+    ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.font = '400 9px ' + FONT; ctx.textAlign = 'center';
+    ctx.fillText(String(text).toUpperCase(), p.x, p.y - 5);
+    ctx.restore();
+  }
+
   // Dessine une ou plusieurs simulations (même graine => mêmes obstacles).
+  // opts : charId, alphaFor(i), highlight (index encadré d'un trait noir fin), labels[i].
+  // Canvas ×2 : l'appelant applique setTransform(2,0,0,2,0,0) + imageSmoothingEnabled=false avant.
   function drawSimFrame(ctx, sims, opts) {
     const o = opts || {};
     const charId = o.charId || 'HommeBleu';
@@ -127,22 +127,15 @@
       const p = s.player, a = alphaFor(i);
       if (i === highlight) {
         ctx.save();
-        ctx.shadowColor = '#f0c840'; ctx.shadowBlur = 16;
-        ctx.strokeStyle = '#f0c840'; ctx.lineWidth = 2;
-        ctx.strokeRect(p.x - 26, p.y + p.h - 52, 52, 52);
+        ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
+        ctx.strokeRect(p.x - 26 + 0.5, p.y + p.h - 52 + 0.5, 51, 51);
         ctx.restore();
       }
       drawChar(ctx, charId, p.x, p.y + p.h, 'none', a);
-      if (labels && labels[i]) {
-        ctx.save();
-        ctx.globalAlpha = a;
-        ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.font = '400 11px sans-serif'; ctx.textAlign = 'left';
-        ctx.fillText(labels[i], p.x - 20, p.y - 5);
-        ctx.restore();
-      }
+      if (labels && labels[i]) drawPlayerLabel(ctx, labels[i], p, a);
     }
   }
 
-  const DodgeRender = { PROJ_IMGS, CHAR_IMGS, drawClassicBackground, drawObstacle, drawChar, drawSimFrame };
+  const DodgeRender = { FONT, BACKGROUND, PROJ_IMGS, CHAR_IMGS, drawClassicBackground, drawObstacle, drawChar, drawPlayerLabel, drawSimFrame };
   if (typeof module !== 'undefined' && module.exports) module.exports = DodgeRender; else root.DodgeRender = DodgeRender;
 })(typeof self !== 'undefined' ? self : globalThis);
