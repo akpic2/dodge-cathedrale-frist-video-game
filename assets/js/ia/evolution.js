@@ -8,12 +8,12 @@
     // Familles (espèces) : on vise ~targetSpecies familles ; le meilleur de chaque famille d'au moins
     // speciesMinSize bots est protégé, et la sélection divise le score par la taille de la famille.
     targetSpecies: 8, speciesMinSize: 5, maxEliteFrac: 0.2,
-    gamesPerBot: 15, holdSeconds: 20, raise: 1.05, introSeconds: 40,
+    gamesPerBot: 20, holdSeconds: 20, raise: 1.05, introSeconds: 40,
     // Limite de vitesse des le depart : la vitesse atteinte a ce score (0 = pas de limite au depart,
     // on retombe alors sur introSeconds).
     startScore: 700,
     // Repêchage : le top rescueFrac rejoue rescueGames parties de plus avant la sélection.
-    rescueFrac: 0.2, rescueGames: 20,
+    rescueFrac: 0, rescueGames: 0,
     // Mémoire des survivants : on garde au plus memoryGames parties dans la moyenne cumulée.
     memoryGames: 50
   };
