@@ -4,7 +4,7 @@
   const Evo = (typeof DodgeEvo !== 'undefined') ? DodgeEvo : require('./evolution.js');
   const Notables = (typeof DodgeNotables !== 'undefined') ? DodgeNotables : require('./notables.js');
 
-  function poolSize(hc, requested) { const max = Math.max(1, Math.min(32, hc || 2)); return requested > 0 ? Math.min(max, Math.max(1, Math.floor(requested))) : max; }
+  function poolSize(hc, requested) { const max = Math.max(1, Math.min(32, hc || 1)); return requested > 0 ? Math.min(max, Math.max(1, Math.floor(requested))) : max; }
 
   // Les notables sont immuables une fois créés : on partage les objets (pas de copie profonde à chaque sauvegarde).
   function copyNotableState(ns) {
