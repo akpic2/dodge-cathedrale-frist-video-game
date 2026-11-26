@@ -11,8 +11,10 @@
   const W = Sim.W, DT = Sim.DT;
   const MAX_TIME = Eval.MAX_GAME_TIME;
   const fmt = Notables.fmt;
+  const FONT = Render.FONT || '"Inter Tight",Arial,sans-serif';
 
-  // Prépare un canvas dont la taille interne est un multiple de 480×420 (dessin net une fois agrandi).
+  // Prépare un canvas dont la taille interne est un multiple de 480×420 (dessin net une fois agrandi) :
+  // 960×840 => setTransform(2, …), comme le jeu de la refonte.
   function setupCtx(canvas) {
     const ctx = canvas.getContext('2d');
     const k = canvas.width / W;
@@ -44,23 +46,26 @@
   function drawObserved(ctx, sim) {
     const obs = observedObstacles(sim);
     ctx.save();
-    ctx.lineWidth = 2;
     obs.forEach((g, i) => {
-      ctx.strokeStyle = i === 0 ? 'rgba(240,200,64,0.95)' : 'rgba(124,92,240,0.85)';
+      // le plus urgent en noir plein, les suivants en gris pointillé
+      ctx.lineWidth = i === 0 ? 1.5 : 1;
+      ctx.strokeStyle = i === 0 ? '#000' : '#777';
+      ctx.setLineDash(i === 0 ? [] : [3, 3]);
       ctx.beginPath(); ctx.arc(g.x, g.y, 24, 0, Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = ctx.strokeStyle; ctx.font = '600 10px Outfit, sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText(String(i + 1), g.x, g.y - 28);
+      ctx.fillStyle = ctx.strokeStyle; ctx.font = '500 9px ' + FONT; ctx.textAlign = 'center';
+      ctx.fillText(String(i + 1).padStart(2, '0'), g.x, g.y - 28);
     });
     ctx.restore();
   }
 
-  // Petit schéma nœuds-liens : luminosité = activation (normalisée par couche).
+  // Petit schéma nœuds-liens en niveaux de gris : noirceur = force de l'activation (normalisée par couche).
+  // Activation positive : disque plein ; négative : cercle vide. Décision prise : disque noir cerclé.
   const OUT_NAMES = ['←', '·', '→', '↑'];
   function drawBrain(ctx, weights, inputs, x0, y0, w, h) {
     const acts = Brain.activations(weights, inputs);
     const L = Brain.LAYERS;
     ctx.save();
-    ctx.fillStyle = 'rgba(8,6,20,0.82)'; ctx.strokeStyle = 'rgba(124,92,240,0.35)'; ctx.lineWidth = 1;
+    ctx.fillStyle = 'rgba(255,255,255,0.94)'; ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
     ctx.fillRect(x0, y0, w, h); ctx.strokeRect(x0 + 0.5, y0 + 0.5, w - 1, h - 1);
     const padX = 14, padY = 8;
     const colX = l => x0 + padX + (w - 2 * padX - 10) * l / (L.length - 1);
@@ -77,7 +82,7 @@
           const ai = Math.abs(acts[l][i]) / norm[l];
           const s = ai * aj;
           if (s < 0.08) continue;
-          ctx.strokeStyle = 'rgba(160,130,255,' + Math.min(0.6, s * 0.8).toFixed(3) + ')';
+          ctx.strokeStyle = 'rgba(0,0,0,' + Math.min(0.45, s * 0.6).toFixed(3) + ')';
           ctx.beginPath(); ctx.moveTo(colX(l), rowY(l, i)); ctx.lineTo(colX(l + 1), rowY(l + 1, j)); ctx.stroke();
         }
       }
@@ -92,28 +97,37 @@
         const b = Math.min(1, Math.abs(v));
         const last = l === L.length - 1;
         const on = last && (i === best || (i === 3 && o[3] > 0));
-        ctx.fillStyle = on ? '#f0c840'
-          : (v >= 0 ? 'rgba(240,234,255,' + (0.12 + 0.88 * b).toFixed(3) + ')' : 'rgba(124,92,240,' + (0.15 + 0.85 * b).toFixed(3) + ')');
-        ctx.beginPath(); ctx.arc(colX(l), rowY(l, i), r, 0, Math.PI * 2); ctx.fill();
+        const grey = 'rgba(0,0,0,' + (0.12 + 0.88 * b).toFixed(3) + ')';
+        ctx.beginPath(); ctx.arc(colX(l), rowY(l, i), r, 0, Math.PI * 2);
+        if (on) { ctx.fillStyle = '#000'; ctx.fill(); }
+        else if (v >= 0) { ctx.fillStyle = grey; ctx.fill(); }
+        else { ctx.strokeStyle = grey; ctx.lineWidth = 0.8; ctx.stroke(); }
+        if (on) {
+          ctx.strokeStyle = '#000'; ctx.lineWidth = 0.8;
+          ctx.beginPath(); ctx.arc(colX(l), rowY(l, i), r + 2, 0, Math.PI * 2); ctx.stroke();
+        }
         if (last) {
-          ctx.fillStyle = on ? '#f0c840' : '#9a8dc8'; ctx.font = '600 9px Outfit, sans-serif'; ctx.textAlign = 'left';
-          ctx.fillText(OUT_NAMES[i], colX(l) + 5, rowY(l, i) + 3);
+          ctx.fillStyle = on ? '#000' : '#777'; ctx.font = (on ? '500' : '400') + ' 9px ' + FONT; ctx.textAlign = 'left';
+          ctx.fillText(OUT_NAMES[i], colX(l) + 6, rowY(l, i) + 3);
         }
       }
     }
     ctx.restore();
   }
 
-  function hud(ctx, lines, color) {
+  // HUD éditorial (comme « SURVIE SANS LIMITE — NORMAL » du jeu) : capitales, 1re ligne en noir, le reste en gris.
+  function hud(ctx, lines) {
     ctx.save();
-    ctx.font = '600 13px Outfit, sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-    let y = 8;
-    for (const t of lines) {
-      if (!t) continue;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    let y = 10, first = true;
+    for (const raw of lines) {
+      if (!raw) continue;
+      const t = raw.toUpperCase();
+      ctx.font = (first ? '500' : '400') + ' 9px ' + FONT;
       const wd = ctx.measureText(t).width;
-      ctx.fillStyle = 'rgba(8,6,20,0.65)'; ctx.fillRect(6, y - 2, wd + 10, 18);
-      ctx.fillStyle = color || '#f0eaff'; ctx.fillText(t, 11, y);
-      y += 20; color = '#9a8dc8';
+      ctx.fillStyle = 'rgba(243,243,243,0.85)'; ctx.fillRect(16, y - 3, wd + 8, 15);
+      ctx.fillStyle = first ? '#000' : '#777'; ctx.fillText(t, 20, y);
+      y += 15; first = false;
     }
     ctx.restore();
   }
@@ -136,7 +150,7 @@
         drawBrain(ctx, spec.weights, inputs, W - 168, 6, 162, 112);
       }
       hud(ctx, [title, 'Score ' + fmt(sim.score) + (ended ? (sim.dead ? '  ·  mort' : '  ·  10 min atteintes') : ''),
-        speed !== 1 ? '×' + speed : ''], '#f0c840');
+        speed !== 1 ? 'Vitesse ×' + speed : '']);
       for (const cb of frameCbs) cb(sim);
     }
 
@@ -232,7 +246,7 @@
       });
       let alive = 0, best = 0;
       for (const s of sims) { if (!s.dead) alive++; if (s.score > best) best = s.score; }
-      hud(ctx, ['Direct · gén. ' + info.gen, 'Vivants ' + alive + '/' + info.total + '  ·  score ' + fmt(best), '×' + speed]);
+      hud(ctx, ['Direct — gén. ' + info.gen, 'Vivants ' + alive + ' / ' + info.total + '  ·  score ' + fmt(best), 'Vitesse ×' + speed]);
     }
 
     function tick(now) {

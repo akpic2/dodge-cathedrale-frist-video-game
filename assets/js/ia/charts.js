@@ -1,6 +1,14 @@
 // Courbes du tableau de bord, dessinées à la main sur un canvas (pas de bibliothèque).
 (function (root) {
-  const COLORS = { best: '#f0c840', mean: '#7c5cf0', median: '#4fd1c5', spd: '#ff7a9a', human: '#f0eaff', grid: 'rgba(124,92,240,0.14)', text: '#9a8dc8' };
+  // Monochrome, comme la refonte Mote : encre noire, gris, filets fins.
+  const COLORS = { best: '#000', mean: '#777', median: '#b3b3b3', spd: '#000', human: '#777', grid: '#e7e7e7', axis: '#cfcfcf', text: '#777' };
+  const FONT = '"Inter Tight",Arial,sans-serif';
+  const STYLE = {
+    best:   { color: COLORS.best, width: 2, dash: [] },
+    mean:   { color: COLORS.mean, width: 1.5, dash: [] },
+    median: { color: COLORS.median, width: 1.5, dash: [2, 3] },
+    spdMax: { color: COLORS.spd, width: 1, dash: [5, 4] },
+  };
 
   function niceMax(v) {
     if (!(v > 0)) return 1;
@@ -29,11 +37,16 @@
 
     const padL = 46, padR = 50, padT = 12, padB = 24;
     const pw = cw - padL - padR, ph = ch - padT - padB;
-    ctx.font = '500 11px Outfit, sans-serif';
+    ctx.font = '400 10px ' + FONT;
 
     if (!history.length) {
+      ctx.strokeStyle = COLORS.grid; ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const y = Math.round(padT + ph * i / 4) + 0.5;
+        ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + pw, y); ctx.stroke();
+      }
       ctx.fillStyle = COLORS.text; ctx.textAlign = 'center';
-      ctx.fillText('Les courbes apparaîtront après la première génération.', cw / 2, ch / 2);
+      ctx.fillText('LES COURBES APPARAÎTRONT APRÈS LA PREMIÈRE GÉNÉRATION.', cw / 2, ch / 2);
       return;
     }
 
@@ -53,22 +66,24 @@
     ctx.strokeStyle = COLORS.grid; ctx.lineWidth = 1; ctx.fillStyle = COLORS.text;
     for (let i = 0; i <= 4; i++) {
       const y = Math.round(padT + ph * i / 4) + 0.5;
+      ctx.strokeStyle = i === 4 ? COLORS.axis : COLORS.grid;
       ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + pw, y); ctx.stroke();
-      ctx.textAlign = 'right'; ctx.fillText(short(maxS * (1 - i / 4)), padL - 6, y + 4);
-      if (anySpd) { ctx.textAlign = 'left'; ctx.fillStyle = COLORS.spd; ctx.fillText(short(maxV * (1 - i / 4)), padL + pw + 6, y + 4); ctx.fillStyle = COLORS.text; }
+      ctx.textAlign = 'right'; ctx.fillText(short(maxS * (1 - i / 4)), padL - 8, y + 3);
+      if (anySpd) { ctx.textAlign = 'left'; ctx.fillStyle = COLORS.spd; ctx.fillText(short(maxV * (1 - i / 4)), padL + pw + 8, y + 3); ctx.fillStyle = COLORS.text; }
     }
     ctx.textAlign = 'center';
     const ticks = 5;
     for (let i = 0; i <= ticks; i++) {
       const g = Math.round(x0 + (x1 - x0) * i / ticks);
-      ctx.fillText('gén. ' + g, X(g), ch - 6);
+      ctx.fillText('GÉN. ' + g, X(g), ch - 6);
     }
 
     // sous-échantillonnage : au plus un point par pixel
     const stride = Math.max(1, Math.floor(n / pw));
-    function line(key, color, yf, dash) {
+    function line(key, yf) {
+      const st = STYLE[key];
       ctx.save();
-      ctx.strokeStyle = color; ctx.lineWidth = key === 'best' ? 2 : 1.5; ctx.setLineDash(dash || []);
+      ctx.strokeStyle = st.color; ctx.lineWidth = st.width; ctx.setLineDash(st.dash); ctx.lineJoin = 'round';
       ctx.beginPath();
       let started = false;
       for (let i = 0; i < n; i += stride) {
@@ -86,14 +101,14 @@
 
     if (o.humanRecord > 0) {
       const y = Math.round(Y(o.humanRecord)) + 0.5;
-      ctx.save(); ctx.strokeStyle = COLORS.human; ctx.globalAlpha = 0.6; ctx.setLineDash([2, 4]);
+      ctx.save(); ctx.strokeStyle = COLORS.human; ctx.lineWidth = 1; ctx.setLineDash([8, 5]);
       ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + pw, y); ctx.stroke(); ctx.restore();
-      ctx.fillStyle = COLORS.human; ctx.textAlign = 'left'; ctx.fillText('record humain', padL + 6, y - 5);
+      ctx.fillStyle = COLORS.human; ctx.textAlign = 'left'; ctx.fillText('RECORD HUMAIN', padL + 6, y - 5);
     }
-    if (anySpd) line('spdMax', COLORS.spd, YV, [5, 4]);
-    line('median', COLORS.median, Y);
-    line('mean', COLORS.mean, Y);
-    line('best', COLORS.best, Y);
+    if (anySpd) line('spdMax', YV);
+    line('median', Y);
+    line('mean', Y);
+    line('best', Y);
   }
 
   const DodgeCharts = { COLORS, drawHistory };
