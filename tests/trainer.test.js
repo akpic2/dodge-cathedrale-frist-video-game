@@ -12,7 +12,7 @@ const mk = (extra) => T.createTrainer(Object.assign({ evaluate, seed: 7, opts: {
 test('poolSize', () => {
   assert.equal(T.poolSize(undefined), 1);
   assert.equal(T.poolSize(1), 1);
-  assert.equal(T.poolSize(8), 7);
+  assert.equal(T.poolSize(8), 8);
 });
 
 test('3 générations : history et notables champion', async () => {
