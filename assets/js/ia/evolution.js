@@ -1,6 +1,6 @@
 (function (root) {
   const DEFAULTS = {
-    popSize: 1000, eliteFrac: 0.05, tournament: 3, mutRate: 0.1, mutSigma: 0.3,
+    popSize: 1200, eliteFrac: 0.04, tournament: 3, mutRate: 0.12, mutSigma: 0.28,
     // Croisement : probabilité qu'un enfant mélange deux parents (sinon simple copie mutée d'un parent).
     crossoverRate: 0.25,
     // Mutation auto-adaptative : la force de mutation de chaque bot mute elle aussi (×(1 ± sigmaMut)).
@@ -8,7 +8,7 @@
     // Familles (espèces) : on vise ~targetSpecies familles ; le meilleur de chaque famille d'au moins
     // speciesMinSize bots est protégé, et la sélection divise le score par la taille de la famille.
     targetSpecies: 8, speciesMinSize: 5, maxEliteFrac: 0.2,
-    gamesPerBot: 20, holdSeconds: 20, raise: 1.05, introSeconds: 40,
+    gamesPerBot: 12, immigrantFrac: 0.035, macroMutationFrac: 0.06, holdSeconds: 20, raise: 1.05, introSeconds: 40,
     // Limite de vitesse des le depart : la vitesse atteinte a ce score (0 = pas de limite au depart,
     // on retombe alors sur introSeconds).
     startScore: 700,
@@ -130,16 +130,25 @@
     }
 
     while (next.length < n) {
-      const a = pick();
-      const b = rng.next() < o.crossoverRate ? pick() : null;
       const child = new Float32Array(len);
-      // Nouvelle force de mutation (héritée de a, elle-même mutée), bornée.
+      if (rng.next() < Math.max(0, Math.min(0.3, o.immigrantFrac || 0))) {
+        for (let k = 0; k < sIdx; k++) child[k] = (rng.next() * 2 - 1) * 0.8;
+        child[sIdx] = o.mutSigma;
+        next.push(child);
+        continue;
+      }
+      const a = pick(), b = rng.next() < o.crossoverRate ? pick() : null;
       let sigma = (a[sIdx] > 0 ? a[sIdx] : o.mutSigma) * (1 + o.sigmaMut * gaussian(rng));
       sigma = sigma < o.sigmaMin ? o.sigmaMin : (sigma > o.sigmaMax ? o.sigmaMax : sigma);
       for (let k = 0; k < sIdx; k++) {
         let v = (b && rng.next() < 0.5) ? b[k] : a[k];
         if (rng.next() < o.mutRate) v += gaussian(rng) * sigma;
         child[k] = v;
+      }
+      if (rng.next() < Math.max(0, Math.min(0.35, o.macroMutationFrac || 0))) {
+        const start = Math.floor(rng.next() * sIdx);
+        const block = Math.max(1, Math.floor(sIdx * (0.025 + rng.next() * 0.10)));
+        for (let k = start; k < Math.min(sIdx, start + block); k++) child[k] = (rng.next() * 2 - 1) * 0.8;
       }
       child[sIdx] = sigma;
       next.push(child);

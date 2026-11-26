@@ -21,7 +21,7 @@
   let pool = null, trainer = null;
   let run = null;           // {seed, opts, cfg, charId}
   let phase = 'idle';       // idle | running | paused | busy
-  let history = [], notables = [], lastSummary = null; // notables : mêmes objets et même éclaircissement que le trainer
+  let history = [], notables = [], lastSummary = null, totalGamesEvaluated = 0; // notables : mêmes objets et même éclaircissement que le trainer
   let elapsedMs = 0, runStartedAt = 0, rateWin = [];
   let queue = [], queueSeq = 0, mode = 'live', current = null, endTimer = 0, playToken = 0;
   let importing = false, saving = false;
@@ -60,6 +60,7 @@
       opts: {
         popSize: Math.max(2, Math.round(num('setPop', D.popSize))),
         gamesPerBot: Math.max(1, Math.round(num('setGames', D.gamesPerBot))),
+        workerCount: Math.max(0, Math.round(num('setWorkers', 0))),
         mutRate: num('setMutRate', D.mutRate), mutSigma: num('setMutSigma', D.mutSigma),
         holdSeconds: num('setHold', D.holdSeconds), raise: num('setRaise', D.raise),
         humanRecord: humanRecordValue(),
@@ -71,7 +72,7 @@
   function writeSettings(r) {
     const D = DodgeEvo.DEFAULTS, o = r.opts;
     const v = (k) => o[k] !== undefined ? o[k] : D[k];
-    $('setPop').value = v('popSize'); $('setGames').value = v('gamesPerBot');
+    $('setPop').value = v('popSize'); $('setGames').value = v('gamesPerBot'); $('setWorkers').value = v('workerCount');
     $('setMutRate').value = v('mutRate'); $('setMutSigma').value = v('mutSigma');
     $('setHold').value = v('holdSeconds'); $('setRaise').value = v('raise');
     $('setHuman').value = o.humanRecord !== undefined ? o.humanRecord : '';
@@ -86,6 +87,21 @@
     scheduleChart();
   }
   ['setHuman', 'setHold', 'setRaise'].forEach(id => $(id).addEventListener('change', liveOptsChanged));
+
+  // Crée le pool avec une URL absolue et un repli à un worker si le navigateur
+  // refuse la taille demandée (quota mémoire / workers simultanés).
+  function createPool(opts) {
+    const url = new URL('assets/js/ia/worker.js', location.href).href;
+    const requested = DodgeTrainer.poolSize(navigator.hardwareConcurrency, opts.workerCount);
+    try { return DodgeTrainer.createWorkerPool(url, requested); }
+    catch (firstError) {
+      if (requested <= 1) throw firstError;
+      try { return DodgeTrainer.createWorkerPool(url, 1); }
+      catch (fallbackError) {
+        throw new Error('Pool de workers impossible (' + firstError.message + '). Repli à 1 worker impossible (' + fallbackError.message + ').');
+      }
+    }
+  }
 
   // ===== Entraîneur =====
   // Construit un trainer sans toucher à l'état global ; ses rappels ne font rien tant qu'il n'est pas installé.
@@ -125,6 +141,7 @@
     history = summary.history;
     lastSummary = summary;
     const games = summary.gamesEvaluated || run.opts.popSize * run.opts.gamesPerBot;
+    totalGamesEvaluated += games;
     rateWin.push({ t: performance.now(), games });
     if (rateWin.length > 11) rateWin.shift();
     if (mode === 'live' && $('liveToggle').checked) { live.show(summary, SAMPLE, LIVE_SPEED); $('stageLabel').textContent = liveLabel(); }
@@ -178,6 +195,8 @@
     phase = 'busy'; updateButtons(); status('Réinitialisation…');
     await trainer.reset();
     const r = readSettings(); r.seed = randSeed();
+    if (pool) pool.terminate();
+    pool = createPool(r.opts);
     makeTrainer(r);
     clearRun();
     phase = 'idle'; updateButtons();
@@ -186,7 +205,7 @@
   }
 
   function clearRun() {
-    history = []; notables = []; lastSummary = null; queue = []; updateQueueBadge();
+    history = []; notables = []; lastSummary = null; totalGamesEvaluated = 0; queue = []; updateQueueBadge();
     elapsedMs = 0; runStartedAt = 0; rateWin = [];
     live.clear();
     backToLive();
@@ -212,6 +231,7 @@
     install(b);
     clearRun();
     history = s.history; notables = DodgeNotables.thin(s.notables);
+    totalGamesEvaluated = history.reduce((total, h) => total + (h.gamesEvaluated || legacyGamesPerGeneration), 0);
     elapsedMs = s.elapsedMs || 0;
     writeSettings(run);
     phase = s.gen > 0 ? 'paused' : 'idle';
@@ -270,8 +290,7 @@
     const legacyGamesPerGeneration = run
       ? (run.legacyGamesPerGeneration || (run.opts.popSize * run.opts.gamesPerBot + Math.ceil(run.opts.popSize * 0.2) * 20 + 100))
       : 0;
-    const totalGames = history.reduce((total, h) => total + (h.gamesEvaluated || legacyGamesPerGeneration), 0);
-    $('stGames').textContent = fmt(totalGames);
+    $('stGames').textContent = fmt(totalGamesEvaluated);
     let rate = '–';
     if (phase === 'running' && rateWin.length >= 2) {
       let g = 0; for (let i = 1; i < rateWin.length; i++) g += rateWin[i].games;
@@ -498,10 +517,12 @@
       showError('Cette page doit être ouverte via un serveur local (ex. Live Server) : les workers ne marchent pas en double-clic.');
       return;
     }
+    let initial;
     try {
-      pool = DodgeTrainer.createWorkerPool('assets/js/ia/worker.js', DodgeTrainer.poolSize(navigator.hardwareConcurrency));
+      initial = readSettings();
+      pool = createPool(initial.opts);
     } catch (e) { showError('Impossible de lancer les workers : ' + e.message); return; }
-    const r = readSettings(); r.seed = randSeed();
+    const r = initial; r.seed = randSeed();
     makeTrainer(r);
     clearRun();
     let saved = null;

@@ -6,12 +6,12 @@ const S = require('../assets/js/sim.js');
 const Sensors = require('../assets/js/ia/sensors.js');
 const Brain = require('../assets/js/ia/brain.js');
 
-test('observe: 25 valeurs finies sur seed 3', () => {
+test('observe: 35 valeurs finies sur seed 3', () => {
   const sim = S.createSim({ seed: 3 });
   const rng = S.makeRng(99);
   const check = () => {
     const o = Sensors.observe(sim);
-    assert.equal(o.length, 25);
+    assert.equal(o.length, Sensors.N_INPUTS);
     for (const v of o) assert.ok(Number.isFinite(v));
   };
   let n = 0;
@@ -29,9 +29,12 @@ test('observe: sans obstacle, motif vide', () => {
   const sim = S.createSim({ seed: 3 });
   sim.obstacles = [];
   const o = Sensors.observe(sim);
-  for (let i = 4; i < 19; i += 3) assert.deepEqual([o[i], o[i + 1], o[i + 2]], [0, 1, 0]);
-  assert.equal(o[19], 0);
-  assert.equal(o[22], 0);
+  for (let i = 0; i < Sensors.NB + Sensors.FINE_NB; i++) assert.equal(o[i], 1);
+  const I = Sensors.IDX;
+  assert.deepEqual([o[I.leftTime1], o[I.leftTime2], o[I.leftSpeed]], [1, 1, 0]);
+  assert.deepEqual([o[I.rightTime1], o[I.rightTime2], o[I.rightSpeed]], [1, 1, 0]);
+  assert.equal(o[I.x], 0);
+  assert.equal(o[I.onGround], 1);
 });
 
 test('observe: obstacle tombant au-dessus du joueur en premier', () => {
@@ -54,16 +57,18 @@ test('observe: latéraux gauche/droite', () => {
     { x: p.x + 50, y: 380, w: 30, h: 30, vx: -200, vy: 0, rot: 0, type: 0, fromRight: true },
   ];
   const o = Sensors.observe(sim);
-  assert.equal(o[19], 1);
-  assert.ok(Math.abs(o[20] - 100 / 480) < 1e-9);
-  assert.ok(Math.abs(o[21] - 0.3) < 1e-9);
-  assert.equal(o[22], 1);
-  assert.ok(Math.abs(o[23] - 50 / 480) < 1e-9);
+  const I = Sensors.IDX;
+  assert.ok(Math.abs(o[I.leftTime1] - (75 / 300 / 1.5)) < 1e-9);
+  assert.ok(Math.abs(o[I.leftSpeed] - 0.3) < 1e-9);
+  assert.ok(Math.abs(o[I.rightTime1] - (25 / 200 / 1.5)) < 1e-9);
+  assert.ok(Math.abs(o[I.rightSpeed] - 0.2) < 1e-9);
+  assert.equal(o[I.onGround], 1);
+  assert.equal(o[I.x], 0);
 });
 
 test('brain: poids', () => {
-  assert.equal(Brain.N_WEIGHTS, 756);
-  assert.equal(Brain.random(S.makeRng(1)).length, 756);
+  assert.ok(Brain.N_WEIGHTS > 2000);
+  assert.equal(Brain.random(S.makeRng(1)).length, Brain.N_WEIGHTS);
   assert.ok(Brain.random(S.makeRng(1)) instanceof Float32Array);
 });
 
@@ -78,14 +83,14 @@ test('brain: forward déterministe', () => {
 
 test('brain: poids nuls -> rien', () => {
   const w = new Float32Array(Brain.N_WEIGHTS);
-  const inp = new Float64Array(25).fill(0.5);
+  const inp = new Float64Array(Sensors.N_INPUTS).fill(0.5);
   assert.deepEqual(Brain.decide(w, inp), { left: false, right: false, jump: false });
 });
 
 test('brain: activations une par couche', () => {
   const w = Brain.random(S.makeRng(2));
-  const acts = Brain.activations(w, new Float64Array(25));
-  assert.deepEqual(acts.map(a => a.length), [25, 16, 16, 4]);
+  const acts = Brain.activations(w, new Float64Array(Sensors.N_INPUTS));
+  assert.deepEqual(acts.map(a => a.length), [Sensors.N_INPUTS, 48, 32, 4]);
 });
 
 test('sources sans fonctions interdites', () => {

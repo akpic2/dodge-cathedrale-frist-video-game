@@ -40,7 +40,7 @@
     const survival = n ? surv / n : 0;
     const lowerTail = lowerTailMean(games, 0.25);
     // 75 % moyenne + 25 % pire quartile : privilégie la survie reproductible.
-    const selectionFitness = 0.75 * survival + 0.25 * lowerTail;
+    const selectionFitness = 0.65 * survival + 0.35 * lowerTail;
     return { fitness: n ? sum / n : 0, survival, lowerTail, selectionFitness, games };
   }
 

@@ -4,7 +4,7 @@
   const Evo = (typeof DodgeEvo !== 'undefined') ? DodgeEvo : require('./evolution.js');
   const Notables = (typeof DodgeNotables !== 'undefined') ? DodgeNotables : require('./notables.js');
 
-  function poolSize(hc) { return Math.max(1, (hc || 2) - 1); }
+  function poolSize(hc, requested) { const max = Math.max(1, Math.min(32, hc || 1)); return requested > 0 ? Math.min(max, Math.max(1, Math.floor(requested))) : max; }
 
   // Les notables sont immuables une fois créés : on partage les objets (pas de copie profonde à chaque sauvegarde).
   function copyNotableState(ns) {
@@ -41,6 +41,66 @@
     return sorted[Math.max(0, Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * p)))];
   }
   const INIT_THRESHOLD = 0.6;
+
+  // Version coopérative de la spéciation : même résultat que Evo.speciate(),
+  // mais cède régulièrement le thread principal pour garder l'interface fluide.
+
+  // Même reproduction que Evo.nextGeneration(), avec des cessions régulières au navigateur.
+  async function nextGenerationYielding(pop, fitness, rng, opts, species) {
+    const o = Object.assign({}, Evo.DEFAULTS, opts);
+    const n = pop.length, len = pop[0].length, sIdx = len - 1;
+    const next = [];
+    for (const i of Evo.eliteIndices(fitness, opts, species)) next.push(new Float32Array(pop[i]));
+    const sel = species ? fitness.map((f, i) => f / species.sizes[species.ids[i]]) : fitness;
+    function pick() {
+      let best = -1;
+      for (let t = 0; t < o.tournament; t++) {
+        const i = Math.floor(rng.next() * n);
+        if (best < 0 || sel[i] > sel[best]) best = i;
+      }
+      return pop[best];
+    }
+    while (next.length < n) {
+      const child = new Float32Array(len);
+      if (rng.next() < Math.max(0, Math.min(0.3, o.immigrantFrac || 0))) {
+        for (let k = 0; k < sIdx; k++) child[k] = (rng.next() * 2 - 1) * 0.8;
+        child[sIdx] = o.mutSigma;
+        next.push(child);
+      } else {
+        const a = pick(), b = rng.next() < o.crossoverRate ? pick() : null;
+        let sigma = (a[sIdx] > 0 ? a[sIdx] : o.mutSigma) * (1 + o.sigmaMut * Evo.gaussian(rng));
+        sigma = sigma < o.sigmaMin ? o.sigmaMin : (sigma > o.sigmaMax ? o.sigmaMax : sigma);
+        for (let k = 0; k < sIdx; k++) {
+          let v = (b && rng.next() < 0.5) ? b[k] : a[k];
+          if (rng.next() < o.mutRate) v += Evo.gaussian(rng) * sigma;
+          child[k] = v;
+        }
+        if (rng.next() < Math.max(0, Math.min(0.35, o.macroMutationFrac || 0))) {
+          const start = Math.floor(rng.next() * sIdx);
+          const block = Math.max(1, Math.floor(sIdx * (0.025 + rng.next() * 0.10)));
+          for (let k = start; k < Math.min(sIdx, start + block); k++) child[k] = (rng.next() * 2 - 1) * 0.8;
+        }
+        child[sIdx] = sigma;
+        next.push(child);
+      }
+      if ((next.length & 15) === 0) await new Promise(resolve => setTimeout(resolve, 0));
+    }
+    return next;
+  }
+
+  async function speciateYielding(pop, threshold, nNet) {
+    const reps = [], ids = new Array(pop.length), sizes = [];
+    for (let i = 0; i < pop.length; i++) {
+      let sp = -1;
+      for (let r = 0; r < reps.length; r++) {
+        if (Evo.distance(pop[i], pop[reps[r]], nNet) < threshold) { sp = r; break; }
+      }
+      if (sp < 0) { sp = reps.length; reps.push(i); sizes.push(0); }
+      ids[i] = sp; sizes[sp]++;
+      if ((i & 3) === 3) await new Promise(resolve => setTimeout(resolve, 0));
+    }
+    return { ids, sizes, count: reps.length };
+  }
 
   function createTrainer(conf) {
     const evaluate = conf.evaluate;
@@ -106,7 +166,7 @@
         spdMaxAfter = Evo.updateSpdMax(spdMaxBefore, championGames, opts).spdMax;
       }
 
-      // Banc d'essai du champion (100 graines fixes, sans limite de vitesse).
+      // Banc d'essai du champion (256 graines fixes, sans limite de vitesse).
       const benchCfg = Object.assign({}, cfg, { spdMax: Infinity });
       const bench = (await evaluate([population[championIndex]], BENCH_SEEDS, benchCfg))[0];
       const benchSorted = bench.games.map(g => g.survival !== undefined ? g.survival : g.score).sort((a, b) => a - b);
@@ -137,7 +197,7 @@
       for (const f of rawFitness) sum += f;
       const median = n % 2 ? sorted[(n - 1) / 2] : (sorted[n / 2 - 1] + sorted[n / 2]) / 2;
       // Familles de cerveaux (pour protéger les nouveautés), seuil ajusté pour en viser ~targetSpecies.
-      const species = Evo.speciate(population, speciesThreshold, Brain.NET_WEIGHTS);
+      const species = await speciateYielding(population, speciesThreshold, Brain.NET_WEIGHTS);
       speciesThreshold = Evo.adaptThreshold(speciesThreshold, species.count, opts);
 
       const gamesEvaluated = results.reduce((total, r) => total + r.games.length, 0) + bench.games.length;
@@ -147,7 +207,17 @@
       const summary = { gen, seeds, history, spdMax: spdMaxAfter, population, results, championIndex, gamesEvaluated };
       spdMax = spdMaxAfter;
       const elites = Evo.eliteIndices(fitness, opts, species);
-      population = Evo.nextGeneration(population, fitness, rng, opts, species);
+      const stagnation = benchBest ? Math.max(0, gen - benchBest.gen) : gen;
+      const pressure = Math.min(2.2, stagnation / 55);
+      const adaptiveOpts = Object.assign({}, opts, {
+        mutRate: Math.min(0.48, (opts.mutRate || Evo.DEFAULTS.mutRate) * (1 + pressure)),
+        sigmaMut: Math.min(0.75, (opts.sigmaMut || Evo.DEFAULTS.sigmaMut) + Math.min(0.4, stagnation / 260)),
+        immigrantFrac: Math.min(0.16, 0.025 + stagnation / 1500),
+        macroMutationFrac: Math.min(0.24, 0.04 + stagnation / 850)
+      });
+      const last = history[history.length - 1];
+      if (last) { last.stagnation = stagnation; last.mutRateUsed = adaptiveOpts.mutRate; last.immigrantFrac = adaptiveOpts.immigrantFrac; last.macroMutationFrac = adaptiveOpts.macroMutationFrac; }
+      population = await nextGenerationYielding(population, fitness, rng, adaptiveOpts, species);
       // Les élites sont en tête de la nouvelle population : elles gardent leur passé ; les enfants repartent de zéro.
       records = population.map((_, i) => i < elites.length ? newRecords[elites[i]] : null);
       gen++;
