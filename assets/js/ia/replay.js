@@ -130,78 +130,125 @@
   function create(canvas) {
     const ctx = setupCtx(canvas);
     let spec = null, sim = null, speed = 1, playing = false, brainOn = false, ended = false;
-    let raf = 0, last = 0, lastDraw = 0, acc = 0, charId = 'HommeBleu', title = '';
-    const MAX_STEPS_PER_FRAME = 16;
+    let raf = 0, lastDraw = 0, charId = 'HommeBleu', title = '';
     const DRAW_INTERVAL = 1000 / 30;
     const endCbs = [], frameCbs = [];
     const inputs = new Float64Array(Sensors.N_INPUTS);
+    let worker = null, workerReady = false, workerFailed = false;
 
-    function finished() { return sim.dead || sim.time >= MAX_TIME; }
-
+    function snapshot(s) {
+      return { player: s.player, obstacles: s.obstacles, dead: s.dead, time: s.time, score: s.score };
+    }
     function draw() {
+      if (!sim) return;
       Render.drawSimFrame(ctx, [sim], { charId });
       if (brainOn) {
         drawObserved(ctx, sim);
-        Sensors.observe(sim, inputs);
-        drawBrain(ctx, spec.weights, inputs, W - 168, 6, 162, 112);
+        if (sim.inputs) drawBrain(ctx, spec.weights, sim.inputs, W - 168, 6, 162, 112);
       }
       hud(ctx, [title, 'Score ' + fmt(sim.score) + (ended ? (sim.dead ? '  ·  mort' : '  ·  10 min atteintes') : ''),
         speed !== 1 ? 'Vitesse ×' + speed : '']);
       for (const cb of frameCbs) cb(sim);
     }
+    function stopFrameLoop() { if (raf) cancelAnimationFrame(raf); raf = 0; }
+    function startFrameLoop() {
+      if (raf || worker) return;
+      const frame = () => { raf = 0; if (!playing) return; draw(); raf = requestAnimationFrame(frame); };
+      raf = requestAnimationFrame(frame);
+    }
+    try {
+      if (typeof Worker !== 'undefined') {
+        worker = new Worker(new URL('assets/js/ia/replay-worker.js', location.href));
+        worker.onmessage = e => {
+          const m = e.data || {};
+          if (m.type === 'ready') { workerReady = true; return; }
+          if (m.type === 'frame') {
+            sim = m.sim; sim.inputs = m.inputs;
+            if (performance.now() - lastDraw >= DRAW_INTERVAL || m.finished) {
+              draw(); lastDraw = performance.now();
+            }
+            if (m.finished && !ended) {
+              ended = true; playing = false;
+              draw();
+              const res = { score: sim.score, time: sim.time, dead: sim.dead, expected: spec && spec.score };
+              for (const cb of endCbs) cb(res);
+            }
+          }
+          if (m.type === 'error') {
+            workerFailed = true; worker.terminate(); worker = null;
+            console.error('Replay worker:', m.message);
+            if (spec) startFallback();
+          }
+        };
+        worker.onerror = e => {
+          workerFailed = true; worker.terminate(); worker = null;
+          console.error('Replay worker error:', e.message);
+          if (spec) startFallback();
+        };
+      }
+    } catch (e) { workerFailed = true; worker = null; }
 
-    function tick(now) {
-      raf = 0;
-      if (!playing || !sim) return;
-      const dt = Math.min((now - last) / 1000, 0.1);
-      last = now;
-      acc += dt * speed;
-      // Garde-fou : un onglet ralenti ne doit pas monopoliser le thread principal
-      // en essayant de rattraper des dizaines de pas d'un coup.
-      let steps = 0;
-      while (acc >= DT && !finished() && steps < MAX_STEPS_PER_FRAME) {
-        acc -= DT;
-        Sim.step(sim, Brain.decide(spec.weights, Sensors.observe(sim, inputs)));
-        steps++;
-      }
-      if (finished() && !ended) {
-        ended = true; playing = false;
+    // Repli pour les navigateurs qui ne peuvent pas créer le worker.
+    let fallbackLast = 0, fallbackAcc = 0;
+    function startFallback() {
+      if (!spec || !sim) return;
+      playing = true; fallbackLast = performance.now();
+      const tick = now => {
+        raf = 0; if (!playing || !sim) return;
+        fallbackAcc += Math.min((now - fallbackLast) / 1000, 0.1) * speed;
+        fallbackLast = now;
+        let count = 0;
+        while (fallbackAcc >= DT && !finished() && count++ < 8) {
+          fallbackAcc -= DT;
+          Sim.step(sim, Brain.decide(spec.weights, Sensors.observe(sim, inputs)));
+        }
+        sim.inputs = inputs;
         draw();
-        const res = { score: sim.score, time: sim.time, dead: sim.dead, expected: spec.score };
-        for (const cb of endCbs) cb(res);
-        return;
-      }
-      // 30 dessins/s suffisent pour un replay lisible ; la simulation continue à son rythme.
-      if (now - lastDraw >= DRAW_INTERVAL) {
-        draw();
-        lastDraw = now;
-      }
+        if (finished() && !ended) {
+          ended = true; playing = false;
+          const res = { score: sim.score, time: sim.time, dead: sim.dead, expected: spec.score };
+          for (const cb of endCbs) cb(res);
+          return;
+        }
+        raf = requestAnimationFrame(tick);
+      };
       raf = requestAnimationFrame(tick);
     }
-
-    function loop() { if (!raf) { last = performance.now(); raf = requestAnimationFrame(tick); } }
+    function finished() { return sim && (sim.dead || sim.time >= MAX_TIME); }
 
     return {
       canvas,
-      // spec : une perf notable, ou {weights, seed, cfg, spdMax[, score, label]}
       play(s, o) {
         if (s) {
-          spec = s; sim = makeSim(s); acc = 0; ended = false;
+          spec = s; sim = makeSim(s); ended = false;
           charId = (o && o.charId) || charId;
           title = (o && o.title !== undefined) ? o.title : (s.gen !== undefined ? 'Gén. ' + s.gen : '');
+          lastDraw = 0; fallbackAcc = 0;
         }
         if (!sim || ended) return;
-        playing = true; draw(); loop();
+        playing = true;
+        if (worker && !workerFailed) {
+          worker.postMessage({ type: 'play', spec: {
+            seed: spec.seed, cfg: spec.cfg || {}, spdMax: spec.spdMax,
+            weights: Array.from(spec.weights), score: spec.score
+          }, speed });
+        } else startFallback();
+        draw();
       },
-      pause() { playing = false; if (raf) { cancelAnimationFrame(raf); raf = 0; } },
-      stop() { this.pause(); spec = null; sim = null; },
+      pause() {
+        playing = false; stopFrameLoop();
+        if (worker && !workerFailed) worker.postMessage({ type: 'pause' });
+      },
+      stop() { this.pause(); spec = null; sim = null; ended = false; },
       isPlaying() { return playing; },
-      setSpeed(x) { speed = Math.max(0.5, Math.min(8, x)); },
+      setSpeed(x) {
+        speed = Math.max(0.5, Math.min(8, x));
+        if (worker && !workerFailed) worker.postMessage({ type: 'speed', speed });
+      },
       onEnd(cb) { endCbs.push(cb); },
       onFrame(cb) { frameCbs.push(cb); },
       showBrain(b) { brainOn = !!b; if (sim) draw(); },
       getSim() { return sim; },
-      // Rejoue toute la partie sans affichage (score attendu, vérification).
       simulate(s) {
         const sm = makeSim(s), inp = new Float64Array(Sensors.N_INPUTS);
         while (!sm.dead && sm.time < MAX_TIME) Sim.step(sm, Brain.decide(s.weights, Sensors.observe(sm, inp)));
