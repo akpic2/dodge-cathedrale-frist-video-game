@@ -36,6 +36,18 @@ test('evaluateBrain : fitness = moyenne des scores', () => {
   assert.deepStrictEqual(b[0], b[1]);
 });
 
+test('lowerTailMean mesure le quartile inférieur', () => {
+  const games = [1, 2, 3, 4, 5, 6, 7, 8].map(survival => ({ survival }));
+  assert.equal(Ev.lowerTailMean(games, 0.25), 1.5);
+  assert.equal(Ev.lowerTailMean([], 0.25), 0);
+});
+
+test('fitness robuste pénalise les résultats irréguliers', () => {
+  const stable = [{ survival: 100 }, { survival: 100 }, { survival: 100 }, { survival: 100 }];
+  const volatile = [{ survival: 10 }, { survival: 10 }, { survival: 190 }, { survival: 190 }];
+  assert.ok(Ev.lowerTailMean(stable, 0.25) > Ev.lowerTailMean(volatile, 0.25));
+});
+
 test('playGame expose spdAtEnd', () => {
   const r = Ev.playGame(zero(), 1, {});
   assert.ok(Number.isFinite(r.spdAtEnd) && r.spdAtEnd >= 150, String(r.spdAtEnd));
