@@ -130,7 +130,7 @@ test('pause puis resume pendant le yield : une seule boucle', async () => {
   assert.deepEqual(errs, []);
   const h = t.getState().history;
   assert.ok(h.length >= 2);
-  assert.equal(calls, 2 * h.length); // évaluation + repêchage
+  assert.equal(calls, h.length); // une seule évaluation commune par génération
   assert.deepEqual(h.map(x => x.gen), h.map((_, i) => i));
 });
 
