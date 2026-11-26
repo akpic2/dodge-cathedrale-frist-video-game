@@ -88,6 +88,21 @@
   }
   ['setHuman', 'setHold', 'setRaise'].forEach(id => $(id).addEventListener('change', liveOptsChanged));
 
+  // Crée le pool avec une URL absolue et un repli à un worker si le navigateur
+  // refuse la taille demandée (quota mémoire / workers simultanés).
+  function createPool(opts) {
+    const url = new URL('assets/js/ia/worker.js', location.href).href;
+    const requested = DodgeTrainer.poolSize(navigator.hardwareConcurrency, opts.workerCount);
+    try { return DodgeTrainer.createWorkerPool(url, requested); }
+    catch (firstError) {
+      if (requested <= 1) throw firstError;
+      try { return DodgeTrainer.createWorkerPool(url, 1); }
+      catch (fallbackError) {
+        throw new Error('Pool de workers impossible (' + firstError.message + '). Repli à 1 worker impossible (' + fallbackError.message + ').');
+      }
+    }
+  }
+
   // ===== Entraîneur =====
   // Construit un trainer sans toucher à l'état global ; ses rappels ne font rien tant qu'il n'est pas installé.
   function buildTrainer(r) {
@@ -180,7 +195,7 @@
     await trainer.reset();
     const r = readSettings(); r.seed = randSeed();
     if (pool) pool.terminate();
-    pool = DodgeTrainer.createWorkerPool('assets/js/ia/worker.js', DodgeTrainer.poolSize(navigator.hardwareConcurrency, r.opts.workerCount));
+    pool = createPool(r.opts);
     makeTrainer(r);
     clearRun();
     phase = 'idle'; updateButtons();
@@ -504,7 +519,7 @@
     let initial;
     try {
       initial = readSettings();
-      pool = DodgeTrainer.createWorkerPool('assets/js/ia/worker.js', DodgeTrainer.poolSize(navigator.hardwareConcurrency, initial.opts.workerCount));
+      pool = createPool(initial.opts);
     } catch (e) { showError('Impossible de lancer les workers : ' + e.message); return; }
     const r = initial; r.seed = randSeed();
     makeTrainer(r);
