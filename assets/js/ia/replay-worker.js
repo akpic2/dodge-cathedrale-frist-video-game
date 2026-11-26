@@ -40,6 +40,7 @@ self.onmessage = e => {
     speed = m.speed || speed; accumulator = 0; last = performance.now(); lastSend = 0; running = true;
     sendFrame(false); tick();
   } else if (m.type === 'pause') running = false;
+  else if (m.type === 'resume') { if (sim && !sim.dead && sim.time < MAX_TIME) { speed = Math.max(0.5, Math.min(8, m.speed || speed)); running = true; last = performance.now(); tick(); } }
   else if (m.type === 'speed') speed = Math.max(0.5, Math.min(8, m.speed || 1));
 };
 self.postMessage({ type: 'ready' });
